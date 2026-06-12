@@ -1,0 +1,40 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── 环境变量 / 密钥 ──
+.env
+*.env
+!.env.example
+
+# ── 数据库 ──
+*.db
+*.sqlite
+*.sqlite3
+starfire.db
+
+# ── 上传 / 运行时产物 ──
+cloud/uploads/*
+!cloud/uploads/.gitkeep
+/tmp/starfire-jobs/
+
+# ── Node / 前端 ──
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ── 日志 ──
+*.log
+logs/
+
+# ── 编辑器 / 系统 ──
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
