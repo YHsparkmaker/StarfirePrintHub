@@ -20,19 +20,50 @@ const http = axios.create({
  * @param {File} file - PDF 文件
  * @param {Object} cupsOptions - 打印参数
  * @param {boolean} aiSummary - 是否开启 AI 摘要
+ * @param {string|null} nodeId - 目标节点 ID
+ * @param {Function|null} onProgress - 进度回调 (percentage: number)
  * @returns {Promise<Object>} 服务器响应
  */
-export async function uploadPrintJob(file, cupsOptions = {}, aiSummary = false) {
+export async function uploadPrintJob(
+  file,
+  cupsOptions = {},
+  aiSummary = false,
+  nodeId = null,
+  onProgress = null,
+) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('cups_options', JSON.stringify(cupsOptions))
   formData.append('ai_summary', String(aiSummary))
+  if (nodeId) {
+    formData.append('node_id', nodeId)
+  }
 
   const { data } = await http.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000, // 上传大文件需要更长超时
+    timeout: 120000,
+    onUploadProgress: onProgress
+      ? (event) => {
+          const pct = event.total ? Math.round((event.loaded / event.total) * 100) : 0
+          onProgress(pct)
+        }
+      : undefined,
   })
   return data
+}
+
+/**
+ * 查询任务列表
+ * @param {string|null} nodeId - 筛选节点 ID
+ * @param {number} limit - 每页数量
+ * @param {number} offset - 偏移量
+ * @returns {Promise<Array>}
+ */
+export async function listJobs(nodeId = null, limit = 50, offset = 0) {
+  const params = { limit, offset }
+  if (nodeId) params.node_id = nodeId
+  const { data } = await http.get('/jobs', { params })
+  return Array.isArray(data) ? data : []
 }
 
 /**
@@ -43,6 +74,64 @@ export async function uploadPrintJob(file, cupsOptions = {}, aiSummary = false) 
 export async function getJobStatus(jobId) {
   const { data } = await http.get(`/jobs/${jobId}/status`)
   return data
+}
+
+/**
+ * 提交 Markdown 文本打印
+ * @param {string} content - Markdown 文本内容
+ * @param {Object} cupsOptions - 打印参数
+ * @param {boolean} aiSummary - 是否开启 AI 摘要
+ * @param {string|null} nodeId - 目标节点 ID
+ * @returns {Promise<Object>} 服务器响应
+ */
+export async function uploadText(content, cupsOptions = {}, aiSummary = false, nodeId = null) {
+  const { data } = await http.post('/text', {
+    content,
+    cups_options: cupsOptions,
+    ai_summary: aiSummary,
+    node_id: nodeId || undefined,
+  }, {
+    timeout: 60000,
+  })
+  return data
+}
+
+/**
+ * 预览打印效果 — 将文件按打印参数生成预览 PDF
+ * @param {File} file - PDF 文件
+ * @param {Object} cupsOptions - 打印参数
+ * @returns {Promise<string>} 预览 PDF 的 blob URL
+ */
+export async function previewFile(file, cupsOptions = {}) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('cups_options', JSON.stringify(cupsOptions))
+
+  const resp = await http.post('/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob',
+    timeout: 120000,
+  })
+  return URL.createObjectURL(resp.data)
+}
+
+/**
+ * 预览打印效果 — 将文本按打印参数生成预览 PDF
+ * @param {string} content - Markdown 文本
+ * @param {Object} cupsOptions - 打印参数
+ * @returns {Promise<string>} 预览 PDF 的 blob URL
+ */
+export async function previewText(content, cupsOptions = {}) {
+  const formData = new FormData()
+  formData.append('text_content', content)
+  formData.append('cups_options', JSON.stringify(cupsOptions))
+
+  const resp = await http.post('/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob',
+    timeout: 60000,
+  })
+  return URL.createObjectURL(resp.data)
 }
 
 export default http

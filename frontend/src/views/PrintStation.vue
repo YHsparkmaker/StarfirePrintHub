@@ -34,6 +34,12 @@
           <span class="text-[10px] uppercase tracking-[0.3em] text-gray-500">
             {{ currentTime }}
           </span>
+          <template v-if="nodeId">
+            <span class="text-cyber-border">|</span>
+            <span class="text-[10px] uppercase tracking-[0.2em] text-cyan/60">
+              {{ nodeId }}
+            </span>
+          </template>
         </div>
 
         <!-- 主标题 -->
@@ -58,9 +64,37 @@
       </header>
 
       <!-- ═══════════════════════════════════════════════
-           文件上传区
+           输入模式切换
            ═══════════════════════════════════════════════ -->
-      <section class="animate-slide-up mb-6">
+      <nav class="mb-6 flex rounded-lg bg-cyber-mid p-1">
+        <button
+          :class="[
+            'flex-1 rounded-md py-2 text-xs uppercase tracking-wider transition-all duration-200',
+            inputMode === 'file'
+              ? 'bg-neon/10 text-neon shadow-[0_0_10px_rgba(57,255,20,0.1)]'
+              : 'text-gray-500 hover:text-gray-300',
+          ]"
+          @click="inputMode = 'file'"
+        >
+          文件上传
+        </button>
+        <button
+          :class="[
+            'flex-1 rounded-md py-2 text-xs uppercase tracking-wider transition-all duration-200',
+            inputMode === 'text'
+              ? 'bg-volt/10 text-volt shadow-[0_0_10px_rgba(180,77,255,0.1)]'
+              : 'text-gray-500 hover:text-gray-300',
+          ]"
+          @click="inputMode = 'text'"
+        >
+          文本编辑
+        </button>
+      </nav>
+
+      <!-- ═══════════════════════════════════════════════
+           文件上传区 (inputMode === 'file')
+           ═══════════════════════════════════════════════ -->
+      <section v-if="inputMode === 'file'" class="animate-slide-up mb-6">
         <h2 class="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-cyan">
           <span class="inline-block h-3 w-3 rounded-sm border border-cyan/40 bg-cyan/10" />
           01 / 选择文件
@@ -137,9 +171,55 @@
       </section>
 
       <!-- ═══════════════════════════════════════════════
+           文本编辑区 (inputMode === 'text')
+           ═══════════════════════════════════════════════ -->
+      <section v-if="inputMode === 'text'" class="animate-slide-up mb-6">
+        <h2 class="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-volt">
+          <span class="inline-block h-3 w-3 rounded-sm border border-volt/40 bg-volt/10" />
+          01 / Markdown 文本
+        </h2>
+
+        <!-- 工具栏 -->
+        <div class="mb-2 flex flex-wrap gap-1">
+          <button
+            v-for="btn in toolbarButtons"
+            :key="btn.label"
+            class="rounded border border-cyber-border px-2.5 py-1 text-[11px] text-gray-400 transition-all hover:border-volt/30 hover:text-volt/70"
+            :title="btn.title"
+            @click="insertMarkdown(btn.insert)"
+          >
+            {{ btn.label }}
+          </button>
+        </div>
+
+        <!-- 编辑区 -->
+        <div class="cyber-panel overflow-hidden">
+          <textarea
+            v-model="textContent"
+            class="w-full resize-y bg-transparent p-4 font-mono text-sm leading-relaxed text-gray-200 outline-none placeholder:text-gray-600"
+            :style="{ minHeight: '220px' }"
+            placeholder="# 在此输入 Markdown 文本...
+
+支持 **粗体** *斜体* `代码` 列表 表格
+
+行内公式: $E=mc^2$
+块级公式:
+$$
+\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}
+$$
+"
+            spellcheck="false"
+          />
+        </div>
+
+        <!-- 预览 -->
+        <MarkdownPreview :text="textContent" class="mt-3" />
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
            打印预览 (选中文件后自动展示)
            ═══════════════════════════════════════════════ -->
-      <PrintPreview :file="selectedFile" class="mb-6" />
+      <PrintPreview v-if="inputMode === 'file'" :file="selectedFile" class="mb-6" />
 
       <!-- ═══════════════════════════════════════════════
            打印参数面板
@@ -290,16 +370,80 @@
       </section>
 
       <!-- ═══════════════════════════════════════════════
+           预览打印效果
+           ═══════════════════════════════════════════════ -->
+      <section v-if="canSubmit && !showSuccess" class="animate-slide-up mb-4" style="animation-delay: 0.15s">
+        <button
+          :disabled="isPreviewing || isSubmitting"
+          class="btn-cyber group w-full border border-cyan/30 bg-cyan/5 text-cyan transition-all hover:border-cyan/50 hover:bg-cyan/10 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed"
+          @click="handlePreview"
+        >
+          <span v-if="!isPreviewing" class="flex items-center justify-center gap-2 text-xs uppercase tracking-wider">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            预览打印效果
+          </span>
+          <span v-else class="flex items-center justify-center gap-2 text-xs">
+            <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan/30 border-t-cyan" />
+            正在生成预览...
+          </span>
+        </button>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
+           打印预览面板
+           ═══════════════════════════════════════════════ -->
+      <section v-if="previewBlobUrl && !showSuccess" class="animate-slide-up mb-6">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-cyan">
+            <span class="inline-block h-3 w-3 rounded-sm border border-cyan/40 bg-cyan/10" />
+            打印效果预览
+          </h2>
+          <span class="text-[9px] text-gray-500">
+            {{ printConfigLabel }}
+          </span>
+        </div>
+        <div class="cyber-panel overflow-hidden">
+          <div class="border-b border-cyber-border/50 px-4 py-2.5 flex items-center justify-between">
+            <span class="text-[10px] text-gray-500 uppercase tracking-wider">
+              {{ inputMode === 'file' && selectedFile ? selectedFile.name : '文本渲染结果' }}
+            </span>
+            <button
+              class="text-[10px] text-gray-500 hover:text-red-400/70 transition-colors"
+              @click="previewBlobUrl = null"
+            >
+              [ 关闭 ]
+            </button>
+          </div>
+          <div class="bg-cyber-darkest p-2">
+            <VuePdfEmbed
+              v-if="previewBlobUrl"
+              :source="previewBlobUrl"
+              :page="1"
+              class="max-w-full"
+              :style="{ maxHeight: '55vh' }"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
            提交按钮区
            ═══════════════════════════════════════════════ -->
       <section class="animate-slide-up" style="animation-delay: 0.2s">
         <button
-          :disabled="!selectedFile || isSubmitting"
+          :disabled="!canSubmit || isSubmitting"
           class="btn-cyber group w-full"
           :class="[
-            !selectedFile || isSubmitting
+            !canSubmit || isSubmitting
               ? 'bg-cyber-mid text-gray-600 border border-cyber-border cursor-not-allowed'
-              : 'bg-neon/10 text-neon border border-neon/30 hover:bg-neon/20 hover:border-neon/60 active:scale-[0.98]',
+              : inputMode === 'text'
+                ? 'bg-volt/10 text-volt border border-volt/30 hover:bg-volt/20 hover:border-volt/60 active:scale-[0.98]'
+                : 'bg-neon/10 text-neon border border-neon/30 hover:bg-neon/20 hover:border-neon/60 active:scale-[0.98]',
           ]"
           @click="handleSubmit"
         >
@@ -309,36 +453,50 @@
               <path stroke-linecap="round" stroke-linejoin="round"
                 d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12a59.77 59.77 0 01-3.27 8.874L6 12z" />
             </svg>
-            发送至云端队列
+            {{ inputMode === 'text' ? '渲染并发送至云端' : '发送至云端队列' }}
           </span>
 
           <!-- 提交中文案 -->
           <span v-else class="flex items-center justify-center gap-2">
             <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neon/30 border-t-neon" />
-            正在发送至云端队列...
+            {{ inputMode === 'text' ? '正在渲染并发送...' : '正在发送至云端队列...' }}
           </span>
 
           <!-- 悬停发光条 -->
           <span
-            v-if="selectedFile && !isSubmitting"
-            class="absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-neon to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+            v-if="canSubmit && !isSubmitting"
+            :class="[
+              'absolute inset-x-0 -bottom-px h-px bg-gradient-to-r opacity-0 transition-opacity group-hover:opacity-100',
+              inputMode === 'text' ? 'from-transparent via-volt to-transparent' : 'from-transparent via-neon to-transparent',
+            ]"
           />
         </button>
 
         <!-- 提交进度动画 -->
         <Transition name="progress">
           <div v-if="isSubmitting" class="mt-4 cyber-panel overflow-hidden p-4">
-            <!-- 进度条容器 -->
-            <div class="relative mb-3 h-1 overflow-hidden rounded-full bg-cyber-mid">
+            <!-- 真实进度条 -->
+            <div class="relative mb-3 h-1.5 overflow-hidden rounded-full bg-cyber-mid">
               <div
-                class="h-full animate-[dataStream_1.5s_ease-in-out_infinite] rounded-full"
-                style="
-                  background: linear-gradient(90deg, transparent, #39ff14, #b44dff, #39ff14, transparent);
-                  background-size: 200% 100%;
-                  width: 80%;
-                "
+                v-if="inputMode === 'file'"
+                class="h-full rounded-full transition-all duration-300"
+                :style="{
+                  width: submitProgress + '%',
+                  background: 'linear-gradient(90deg, transparent, #39ff14, #b44dff, #39ff14, transparent)',
+                  backgroundSize: '200% 100%',
+                }"
+              />
+              <div
+                v-else
+                class="h-full animate-pulse rounded-full bg-volt/60"
+                style="width: 100%"
               />
             </div>
+
+            <!-- 进度百分比 -->
+            <p class="mb-2 text-center font-mono text-sm text-neon tabular-nums">
+              {{ inputMode === 'file' ? submitProgress + '%' : '渲染中...' }}
+            </p>
 
             <!-- 状态文字流 -->
             <div class="flex flex-col gap-1 font-mono text-[10px]">
@@ -346,21 +504,33 @@
                 <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-neon" />
                 <span class="animate-pulse">{{ submittingMessages[currentMessageIndex] }}</span>
               </p>
-              <p class="text-gray-600">
-                > encrypting payload...
-                <span class="text-neon/40">{{ Math.floor(submitProgress) }}%</span>
-              </p>
-              <p class="text-gray-600">
-                > connecting to starfire://cloud-node
-              </p>
-              <p class="flex items-center gap-1 text-gray-600">
-                <span class="inline-block h-1 w-1 rounded-full bg-cyan/50" />
-                {{ submitProgress >= 30 ? 'handshake established' : 'establishing handshake...' }}
-              </p>
-              <p v-if="submitProgress >= 60" class="flex items-center gap-1 text-gray-600">
-                <span class="inline-block h-1 w-1 rounded-full bg-volt/50" />
-                transferring to printer queue...
-              </p>
+              <template v-if="inputMode === 'file'">
+                <p class="text-gray-600">
+                  > uploading...
+                  <span class="text-neon/40">{{ submitProgress }}%</span>
+                </p>
+                <p class="text-gray-600">
+                  > connecting to starfire://cloud-node
+                </p>
+                <p class="flex items-center gap-1 text-gray-600">
+                  <span class="inline-block h-1 w-1 rounded-full bg-cyan/50" />
+                  transferring to cloud queue...
+                </p>
+                <p v-if="submitProgress >= 80" class="flex items-center gap-1 text-gray-600">
+                  <span class="inline-block h-1 w-1 rounded-full bg-volt/50" />
+                  processing on server...
+                </p>
+              </template>
+              <template v-else>
+                <p class="flex items-center gap-1 text-gray-600">
+                  <span class="inline-block h-1 w-1 animate-pulse rounded-full bg-cyan/50" />
+                  > converting Markdown + LaTeX to PDF...
+                </p>
+                <p class="flex items-center gap-1 text-gray-600">
+                  <span class="inline-block h-1 w-1 rounded-full bg-volt/50" />
+                  pushing to print queue...
+                </p>
+              </template>
             </div>
 
             <!-- AI 摘要特殊提示 -->
@@ -417,6 +587,12 @@
           <span class="text-[9px] uppercase tracking-[0.3em] text-gray-700">Print Hub</span>
           <span class="h-px w-6 bg-cyber-border" />
         </div>
+        <button
+          class="mt-3 text-[10px] uppercase tracking-wider text-gray-600 hover:text-cyan/60 transition-colors"
+          @click="router.push('/history')"
+        >
+          [ 打印历史 ]
+        </button>
       </footer>
     </main>
   </div>
@@ -426,18 +602,55 @@
      SCRIPT
      ═══════════════════════════════════════════════════════════════════ -->
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { uploadPrintJob } from '@/composables/useApi'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { uploadPrintJob, uploadText, previewFile, previewText } from '@/composables/useApi'
 import PrintPreview from '@/components/PrintPreview.vue'
+import MarkdownPreview from '@/components/MarkdownPreview.vue'
+import VuePdfEmbed from 'vue-pdf-embed'
 import { ALLOWED_FILE_TYPES, ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB } from '@/utils/constants'
 
 // ── 路由 ──
-import { useRouter } from 'vue-router'
+const route = useRoute()
 const router = useRouter()
 
-// ═══════════════════════════════════════════════════════════════
+// ── 节点 ID (从 URL ?node=xxx 读取) ──
+const nodeId = ref(route.query.node || null)
+
+// ── 输入模式: file | text ──
+const inputMode = ref('file')
+
+// ── 文本编辑内容 ──
+const textContent = ref('')
+
+// ── 工具栏按钮 ──
+const toolbarButtons = [
+  { label: 'B',  title: '粗体',       insert: '**text**' },
+  { label: 'I',  title: '斜体',       insert: '*text*' },
+  { label: 'H1', title: '一级标题',   insert: '# ' },
+  { label: 'H2', title: '二级标题',   insert: '## ' },
+  { label: 'H3', title: '三级标题',   insert: '### ' },
+  { label: '`',  title: '行内代码',   insert: '`text`' },
+  { label: '```',title: '代码块',     insert: '\n```\n\n```\n' },
+  { label: '>',  title: '引用',       insert: '> ' },
+  { label: '-',  title: '无序列表',   insert: '- ' },
+  { label: '1.', title: '有序列表',   insert: '1. ' },
+  { label: '$',  title: '行内公式',   insert: '$x^2$' },
+  { label: '$$', title: '块级公式',   insert: '\n$$\nE=mc^2\n$$\n' },
+  { label: '--', title: '分隔线',     insert: '\n---\n' },
+  { label: 'link', title: '链接',     insert: '[text](url)' },
+  { label: '|',  title: '表格',       insert: '\n| col1 | col2 |\n|------|------|\n| a    | b    |\n' },
+]
+
+// ── 是否可以提交 ──
+const canSubmit = computed(() => {
+  if (inputMode.value === 'file') return !!selectedFile.value
+  return textContent.value.trim().length > 0
+})
+
+// ═══════════════════════════════════════════════════════════
 // 响应式状态
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 
 // 文件
 const fileInputRef = ref(null)
@@ -463,6 +676,20 @@ const showSuccess = ref(false)
 const submittedJobId = ref('')
 const errorMessage = ref('')
 
+// 预览状态
+const isPreviewing = ref(false)
+const previewBlobUrl = ref(null)
+
+// 打印配置摘要 (显示在预览面板)
+const printConfigLabel = computed(() => {
+  const parts = [`${printOptions.copies || 1}份`]
+  if (printOptions.number_up > 1) parts.push(`${printOptions.number_up}-up`)
+  if (printOptions.sides === 'two-sided-long-edge') parts.push('双面')
+  else parts.push('单面')
+  parts.push(printOptions.media)
+  return parts.join(' · ')
+})
+
 // 进度动画文案轮播
 const submittingMessages = [
   'UPLOADING...',
@@ -473,7 +700,6 @@ const submittingMessages = [
 ]
 const currentMessageIndex = ref(0)
 let messageTimer = null
-let progressTimer = null
 
 // 当前时间
 const currentTime = ref('')
@@ -569,19 +795,48 @@ function formatFileSize(bytes) {
   return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
+// ── 预览打印效果 ──
+async function handlePreview() {
+  if (!canSubmit.value || isPreviewing.value) return
+
+  isPreviewing.value = true
+  previewBlobUrl.value = null
+
+  try {
+    const cupsOptions = {
+      media: printOptions.media,
+      number_up: printOptions.number_up,
+      sides: printOptions.sides,
+      copies: printOptions.copies,
+    }
+
+    let url
+    if (inputMode.value === 'file') {
+      url = await previewFile(selectedFile.value, cupsOptions)
+    } else {
+      url = await previewText(textContent.value, cupsOptions)
+    }
+    previewBlobUrl.value = url
+  } catch (err) {
+    errorMessage.value = '预览生成失败: ' + (err.response?.data?.detail || err.message)
+  } finally {
+    isPreviewing.value = false
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 提交逻辑
 // ═══════════════════════════════════════════════════════════════
 
 async function handleSubmit() {
-  if (!selectedFile.value || isSubmitting.value) return
+  if (!canSubmit.value || isSubmitting.value) return
 
   isSubmitting.value = true
   showSuccess.value = false
   errorMessage.value = ''
   submitProgress.value = 0
 
-  // 启动进度动画
+  // 启动进度文案动画
   startSubmitAnimation()
 
   try {
@@ -593,12 +848,26 @@ async function handleSubmit() {
       copies: printOptions.copies,
     }
 
-    // 调用云端 API
-    const response = await uploadPrintJob(
-      selectedFile.value,
-      cupsOptions,
-      aiSummary.value,
-    )
+    let response
+
+    if (inputMode.value === 'file') {
+      // ── 文件上传 ──
+      response = await uploadPrintJob(
+        selectedFile.value,
+        cupsOptions,
+        aiSummary.value,
+        nodeId.value,
+        (pct) => { submitProgress.value = pct },
+      )
+    } else {
+      // ── 文本提交 ──
+      response = await uploadText(
+        textContent.value,
+        cupsOptions,
+        aiSummary.value,
+        nodeId.value,
+      )
+    }
 
     // 成功
     submitProgress.value = 100
@@ -628,16 +897,42 @@ async function handleSubmit() {
   }
 }
 
-function startSubmitAnimation() {
-  // 进度条模拟
-  progressTimer = setInterval(() => {
-    if (submitProgress.value < 90) {
-      // 模拟非匀速增长: 先快后慢
-      const increment = Math.max(1, (90 - submitProgress.value) / 8)
-      submitProgress.value += increment
-    }
-  }, 300)
+// ── Markdown 工具栏插入 ──
+function insertMarkdown(template) {
+  const textarea = document.querySelector('textarea')
+  if (!textarea) return
 
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selected = textContent.value.substring(start, end)
+
+  let insertion = template
+  // 如果选中了文字, 包裹它 (如选中 "hello" 按 B → **hello**)
+  if (selected && template.includes('text')) {
+    insertion = template.replace('text', selected)
+  }
+
+  // 块级插入在首行 (如 ##, >, ```)
+  const isBlockTemplate = template.startsWith('\n') || template.startsWith('#') || template.startsWith('>') || template.startsWith('-') || template.startsWith('1.') || template.startsWith('|')
+  if (isBlockTemplate && start > 0) {
+    // 确保在新行开始
+    const before = textContent.value.substring(0, start)
+    if (!before.endsWith('\n') && before.length > 0) {
+      insertion = '\n' + insertion
+    }
+  }
+
+  textContent.value = textContent.value.substring(0, start) + insertion + textContent.value.substring(end)
+
+  // 恢复光标位置
+  nextTick(() => {
+    const newPos = start + insertion.length
+    textarea.focus()
+    textarea.setSelectionRange(newPos, newPos)
+  })
+}
+
+function startSubmitAnimation() {
   // 文案轮播
   messageTimer = setInterval(() => {
     currentMessageIndex.value = (currentMessageIndex.value + 1) % submittingMessages.length
@@ -645,7 +940,6 @@ function startSubmitAnimation() {
 }
 
 function stopSubmitAnimation() {
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
   if (messageTimer) { clearInterval(messageTimer); messageTimer = null }
 }
 
@@ -729,5 +1023,28 @@ onUnmounted(() => {
 @keyframes dataStream {
   0% { background-position: 200% 0%; }
   100% { background-position: -200% 0%; }
+}
+
+/* ── 移动端触摸优化 ── */
+@media (pointer: coarse) {
+  /* 触摸设备增大可点击区域 */
+  .cyber-panel.cursor-pointer {
+    min-height: 120px;
+  }
+  /* 移除 tap 高亮 */
+  button, [role="switch"], .cyber-panel.cursor-pointer {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  /* 增大按钮触摸区域 */
+  button[class*="px-3"] {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  /* 触摸按下反馈 */
+  button:active:not(:disabled) {
+    filter: brightness(1.3);
+  }
 }
 </style>

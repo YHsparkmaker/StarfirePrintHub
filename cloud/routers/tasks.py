@@ -4,6 +4,7 @@
 面向树莓派端:  拉取任务、更新状态、文件下载
 """
 
+import io
 import json
 import logging
 from typing import Optional
@@ -18,7 +19,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -28,10 +29,14 @@ from schemas.task import (
     JobNextResponse,
     JobUpdateRequest,
     JobUpdateResponse,
+    JobListItem,
+    TextUploadRequest,
 )
 from services.task_service import TaskService
-from services.file_service import FileService
+from services.file_service import FileService, ALLOWED_EXTENSIONS
 from services.ai_service import generate_ai_summary_and_prepend
+from services.text_render_service import TextRenderService
+from services.print_preview_service import generate_preview_pdf
 from config import settings
 
 router = APIRouter(prefix="/api", tags=["打印任务"])
@@ -58,6 +63,11 @@ async def upload_file(
         default=False,
         description="是否生成 AI 摘要并拼接到 PDF 前",
     ),
+    # ── 目标节点 (扫码自带) ──
+    node_id: Optional[str] = Form(
+        default=None,
+        description="目标打印机节点 ID (扫码传入)",
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -74,7 +84,7 @@ async def upload_file(
     if not FileService.is_allowed(file.filename or ""):
         raise HTTPException(
             status_code=400,
-            detail=f"不支持的文件类型。允许: {FileService.ALLOWED_EXTENSIONS}",
+            detail=f"不支持的文件类型。允许: {ALLOWED_EXTENSIONS}",
         )
 
     # ── 2. 解析打印参数 ──────────────────────
@@ -102,6 +112,7 @@ async def upload_file(
         original_name=original_name,
         cups_options=cups_dict,
         ai_summary=ai_summary,
+        node_id=node_id,
     )
 
     # ── 5. 【AI 拦截】如果开启 AI 摘要，异步生成 ──
@@ -113,7 +124,6 @@ async def upload_file(
             _ai_summary_with_persist,
             pdf_path=file_path,
             job_id=task.id,
-            db_session_factory=db,  # 注意: 这里需要独立的 session
         )
 
     return UploadResponse(
@@ -286,5 +296,162 @@ async def download_file(
     return FileResponse(
         path=str(file_path),
         filename=file_path.name,
+        media_type="application/pdf",
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 6. 任务列表 (面向手机端)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/jobs", response_model=list[JobListItem])
+async def list_jobs(
+    node_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    手机端查询历史任务列表
+
+    GET /api/jobs?node_id=xxx&limit=20&offset=0
+    → [{ id, file_name, status, ... }, ...]
+    """
+    tasks = await TaskService.list_jobs(
+        db, node_id=node_id, limit=limit, offset=offset
+    )
+    return [t.to_dict() for t in tasks]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 7. 文本上传 (Markdown + LaTeX → PDF → 打印任务)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/text", response_model=UploadResponse)
+async def upload_text(
+    req: TextUploadRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    手机端提交 Markdown 文本 → 渲染为 PDF → 创建打印任务
+
+    POST /api/text
+    {
+      "content": "# 标题\\n\\n内容...",
+      "cups_options": {"copies": 2, "media": "A4"},
+      "node_id": "pi-3f-a01"
+    }
+
+    服务端流程:
+      1. LaTeX 公式 → MathML
+      2. Markdown → HTML
+      3. weasyprint → PDF
+      4. 保存 PDF → 创建任务
+    """
+    if not req.content or not req.content.strip():
+        raise HTTPException(status_code=400, detail="文本内容不能为空")
+
+    # ── 1. Markdown + LaTeX → PDF ───────────
+    try:
+        pdf_path = TextRenderService.render_to_pdf(
+            markdown_text=req.content,
+            filename_prefix="text",
+        )
+    except Exception as e:
+        logger.error(f"文本 PDF 渲染失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文本渲染失败: {e}")
+
+    # ── 2. 创建任务记录 ──────────────────────
+    task = await TaskService.create_task(
+        db=db,
+        file_path=str(pdf_path),
+        original_name="文本打印.md",
+        cups_options=req.cups_options,
+        ai_summary=req.ai_summary,
+        node_id=req.node_id,
+    )
+
+    return UploadResponse(
+        job_id=task.id,
+        status=task.status,
+        file_name="文本打印",
+        summary_text=None,
+        created_at=task.created_at.isoformat(),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 8. 打印预览 (文件/文本 → 应用打印配置 → 返回预览 PDF)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/preview")
+async def preview_print(
+    # ── 文件 (可选) ──
+    file: Optional[UploadFile] = File(None),
+    # ── 文本 (可选) ──
+    text_content: Optional[str] = Form(None),
+    # ── 打印参数 ──
+    cups_options: str = Form(default="{}"),
+):
+    """
+    预览打印效果 — 将文件或文本按打印参数生成预览 PDF
+
+    POST /api/preview
+    Content-Type: multipart/form-data
+
+    file:          (可选) 上传的 PDF 文件
+    text_content:  (可选) Markdown 文本内容
+    cups_options:  JSON 字符串, 如 {"number_up":4,"copies":2,"sides":"two-sided-long-edge"}
+
+    返回: PDF 文件流 (application/pdf)
+    """
+    # ── 解析打印参数 ──
+    try:
+        opts = json.loads(cups_options)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="cups_options 不是合法的 JSON")
+
+    number_up = opts.get("number_up", 1)
+    sides = opts.get("sides", "one-sided")
+    copies = opts.get("copies", 1)
+
+    # ── 获取源 PDF ──
+    pdf_bytes: bytes
+
+    if file and file.filename:
+        # 文件模式
+        pdf_bytes = await file.read()
+        if not pdf_bytes:
+            raise HTTPException(status_code=400, detail="上传的文件为空")
+    elif text_content and text_content.strip():
+        # 文本模式: 先渲染为 PDF
+        try:
+            pdf_path = TextRenderService.render_to_pdf(
+                markdown_text=text_content,
+                filename_prefix="preview",
+            )
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+        except Exception as e:
+            logger.error(f"文本预览渲染失败: {e}")
+            raise HTTPException(status_code=500, detail=f"文本渲染失败: {e}")
+    else:
+        raise HTTPException(status_code=400, detail="请提供文件或文本内容")
+
+    # ── 应用打印配置 → 生成预览 ──
+    try:
+        preview_bytes = generate_preview_pdf(
+            pdf_bytes=pdf_bytes,
+            number_up=number_up,
+            sides=sides,
+            copies=copies,
+        )
+    except Exception as e:
+        logger.error(f"预览生成失败: {e}")
+        raise HTTPException(status_code=500, detail=f"预览生成失败: {e}")
+
+    return StreamingResponse(
+        io.BytesIO(preview_bytes),
         media_type="application/pdf",
     )

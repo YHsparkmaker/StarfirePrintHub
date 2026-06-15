@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import PrintStation from '@/views/PrintStation.vue'
 import StatusView from '@/views/StatusView.vue'
+import HistoryView from '@/views/HistoryView.vue'
 
 const routes = [
   {
@@ -12,6 +13,11 @@ const routes = [
     path: '/status/:jobId',
     name: 'status',
     component: StatusView,
+  },
+  {
+    path: '/history',
+    name: 'history',
+    component: HistoryView,
   },
 ]
 

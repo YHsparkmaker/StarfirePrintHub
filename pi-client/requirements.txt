@@ -9,3 +9,6 @@ python-dotenv==1.0.1
 
 # 指数退避重试
 tenacity==9.0.0
+
+# 测试
+pytest==8.3.4

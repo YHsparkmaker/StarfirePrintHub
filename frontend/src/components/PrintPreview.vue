@@ -140,7 +140,7 @@
      SCRIPT
      ═══════════════════════════════════════════════════════════════════ -->
 <script setup>
-import { ref, watch, shallowRef } from 'vue'
+import { ref, watch, shallowRef, onMounted } from 'vue'
 import VuePdfEmbed from 'vue-pdf-embed'
 
 const props = defineProps({
@@ -157,6 +157,15 @@ const totalPages = ref(0)
 const loading = ref(false)
 const error = ref('')
 const pdfSource = shallowRef(null)
+
+// ── Worker 路径 — dev 直接引用 node_modules, prod 用 static copy ──
+onMounted(async () => {
+  const pdfjs = await import('pdfjs-dist')
+  // pdfjs-dist v3+/v4+ 顶层导出 GlobalWorkerOptions
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+  }
+})
 
 // ── 监听文件变化 → 读取并解析 PDF ──
 watch(
@@ -182,14 +191,8 @@ watch(
       pdfSource.value = uint8
 
       // 获取总页数
-      const { pdf } = await import('pdfjs-dist')
-      // Vite 环境下配置 worker 来源
-      if (!pdf.GlobalWorkerOptions.workerSrc) {
-        pdf.GlobalWorkerOptions.workerSrc =
-          `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
-      }
-
-      const loadingTask = pdf.getDocument({ data: uint8.slice() })
+      const pdfjs = await import('pdfjs-dist')
+      const loadingTask = pdfjs.getDocument({ data: uint8.slice() })
       const doc = await loadingTask.promise
       totalPages.value = doc.numPages
 

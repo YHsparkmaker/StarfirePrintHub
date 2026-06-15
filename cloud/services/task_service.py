@@ -5,7 +5,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,7 @@ class TaskService:
         original_name: str,
         cups_options: dict,
         ai_summary: bool = False,
+        node_id: Optional[str] = None,
     ) -> PrintTask:
         """
         创建一条新的打印任务记录
@@ -40,6 +41,7 @@ class TaskService:
             original_name: 用户上传的原始文件名
             cups_options: 打印参数字典
             ai_summary: 是否开启 AI 摘要
+            node_id: 目标边缘节点 ID (扫码传入, 可空)
 
         Returns:
             新创建的 PrintTask 实例
@@ -48,6 +50,7 @@ class TaskService:
             file_path=file_path,
             status="pending",
             ai_summary=ai_summary,
+            node_id=node_id,
         )
         task.set_cups_options(cups_options)
 
@@ -175,3 +178,27 @@ class TaskService:
         stmt = select(PrintTask).where(PrintTask.id == job_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+
+    # ═══════════════════════════════════════════════════════════════
+    # 任务列表查询
+    # ═══════════════════════════════════════════════════════════════
+
+    @staticmethod
+    async def list_jobs(
+        db: AsyncSession,
+        node_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[PrintTask]:
+        """分页查询任务列表 (按创建时间倒序)"""
+        stmt = select(PrintTask)
+        if node_id:
+            stmt = stmt.where(PrintTask.node_id == node_id)
+        stmt = (
+            stmt.order_by(PrintTask.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+
+        result = await db.execute(stmt)
+        return list(result.scalars().all())

@@ -57,3 +57,35 @@ class JobUpdateResponse(BaseModel):
     job_id: str
     status: str
     updated: bool = True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GET /api/jobs — 响应
+# ═══════════════════════════════════════════════════════════════════
+
+class JobListItem(BaseModel):
+    """任务列表项"""
+    id: str
+    file_name: str
+    status: str
+    node_id: Optional[str] = None
+    ai_summary: bool = False
+    summary_text: Optional[str] = None
+    error_msg: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# POST /api/text — 请求
+# ═══════════════════════════════════════════════════════════════════
+
+class TextUploadRequest(BaseModel):
+    """Markdown 文本上传请求"""
+    content: str = Field(..., min_length=1, description="Markdown 文本内容")
+    cups_options: dict = Field(default_factory=dict, description="打印参数")
+    ai_summary: bool = Field(default=False, description="是否生成 AI 摘要")
+    node_id: Optional[str] = Field(None, description="目标打印机节点 ID")
