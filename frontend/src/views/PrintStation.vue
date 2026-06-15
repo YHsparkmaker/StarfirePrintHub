@@ -307,6 +307,40 @@ $$
             </button>
           </div>
 
+          <!-- ── 打印方向 (横/竖) ── -->
+          <div class="flex items-center justify-between px-5 py-4">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-gray-400">打印方向</span>
+              <p class="mt-0.5 text-[10px] text-gray-600">
+                {{ isLandscape ? '横向 (Landscape)' : '竖向 (Portrait)' }}
+              </p>
+            </div>
+            <div class="flex gap-1 rounded-md bg-cyber-mid p-0.5">
+              <button
+                :class="[
+                  'px-3 py-1.5 text-xs rounded-sm transition-all duration-200',
+                  !isLandscape
+                    ? 'bg-neon/10 text-neon shadow-[0_0_8px_rgba(57,255,20,0.1)]'
+                    : 'text-gray-500 hover:text-gray-300',
+                ]"
+                @click="isLandscape = false"
+              >
+                竖向
+              </button>
+              <button
+                :class="[
+                  'px-3 py-1.5 text-xs rounded-sm transition-all duration-200',
+                  isLandscape
+                    ? 'bg-volt/15 text-volt shadow-[0_0_10px_rgba(180,77,255,0.15)]'
+                    : 'text-gray-500 hover:text-gray-300',
+                ]"
+                @click="isLandscape = true"
+              >
+                横向
+              </button>
+            </div>
+          </div>
+
           <!-- ── AI 智能摘要 (Toggle) ── -->
           <div class="flex items-center justify-between px-5 py-4">
             <div>
@@ -663,6 +697,7 @@ const printOptions = reactive({
   media: 'A4',        // 纸张大小
   number_up: 1,        // 拼版 (1/2/4)
   sides: 'one-sided',  // 单双面
+  orientation: 'portrait', // 方向
   copies: 1,           // 份数
 })
 
@@ -686,6 +721,7 @@ const printConfigLabel = computed(() => {
   if (printOptions.number_up > 1) parts.push(`${printOptions.number_up}-up`)
   if (printOptions.sides === 'two-sided-long-edge') parts.push('双面')
   else parts.push('单面')
+  parts.push(printOptions.orientation === 'landscape' ? '横向' : '竖向')
   parts.push(printOptions.media)
   return parts.join(' · ')
 })
@@ -713,6 +749,13 @@ const isDuplex = computed({
   get: () => printOptions.sides === 'two-sided-long-edge',
   set: (val) => {
     printOptions.sides = val ? 'two-sided-long-edge' : 'one-sided'
+  },
+})
+
+const isLandscape = computed({
+  get: () => printOptions.orientation === 'landscape',
+  set: (val) => {
+    printOptions.orientation = val ? 'landscape' : 'portrait'
   },
 })
 
@@ -807,6 +850,7 @@ async function handlePreview() {
       media: printOptions.media,
       number_up: printOptions.number_up,
       sides: printOptions.sides,
+      orientation: printOptions.orientation,
       copies: printOptions.copies,
     }
 
@@ -845,6 +889,7 @@ async function handleSubmit() {
       media: printOptions.media,
       number_up: printOptions.number_up,
       sides: printOptions.sides,
+      orientation: printOptions.orientation,
       copies: printOptions.copies,
     }
 

@@ -415,6 +415,7 @@ async def preview_print(
     number_up = opts.get("number_up", 1)
     sides = opts.get("sides", "one-sided")
     copies = opts.get("copies", 1)
+    orientation = opts.get("orientation", "portrait")
 
     # ── 获取源 PDF ──
     pdf_bytes: bytes
@@ -446,6 +447,7 @@ async def preview_print(
             number_up=number_up,
             sides=sides,
             copies=copies,
+            orientation=orientation,
         )
     except Exception as e:
         logger.error(f"预览生成失败: {e}")

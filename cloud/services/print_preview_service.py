@@ -28,6 +28,7 @@ def generate_preview_pdf(
     number_up: int = 1,
     sides: str = "one-sided",
     copies: int = 1,
+    orientation: str = "portrait",
 ) -> bytes:
     """
     对 PDF 应用打印参数, 返回预览 PDF 字节
@@ -37,6 +38,7 @@ def generate_preview_pdf(
         number_up: n-up 拼版 (1/2/4/6/9/16)
         sides: 双面模式 (one-sided / two-sided-long-edge)
         copies: 份数
+        orientation: 打印方向 (portrait / landscape)
 
     Returns:
         处理后的 PDF 字节
@@ -61,7 +63,11 @@ def generate_preview_pdf(
         for p in reader.pages:
             page_list.append(p)
 
-    # ── 2. 拼版 ──
+    # ── 2. 横向旋转 (landscape) ──
+    if orientation == "landscape":
+        page_list = [_rotate_landscape(p) for p in page_list]
+
+    # ── 3. 拼版 ──
     if per_sheet == 1:
         for page in page_list:
             writer.add_page(page)
@@ -79,7 +85,7 @@ def generate_preview_pdf(
             sheet = _make_nup_sheet(chunk, cols, rows, base_w, base_h)
             writer.add_page(sheet)
 
-    # ── 3. 双面标注 ──
+    # ── 4. 双面标注 ──
     if sides != "one-sided":
         writer = _annotate_duplex_label(writer)
 
@@ -87,6 +93,16 @@ def generate_preview_pdf(
     writer.write(buf)
     buf.seek(0)
     return buf.read()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 横向旋转
+# ═══════════════════════════════════════════════════════════════════
+
+def _rotate_landscape(page: PageObject) -> PageObject:
+    """将页面旋转 90° 以模拟横向打印"""
+    page.rotate(90)
+    return page
 
 
 # ═══════════════════════════════════════════════════════════════════

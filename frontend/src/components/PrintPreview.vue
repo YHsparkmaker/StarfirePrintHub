@@ -172,6 +172,9 @@ watch(
   () => props.file,
   async (file) => {
     if (!file) {
+      if (pdfSource.value) {
+        URL.revokeObjectURL(pdfSource.value)
+      }
       pdfSource.value = null
       totalPages.value = 0
       currentPage.value = 1
@@ -185,14 +188,16 @@ watch(
     currentPage.value = 1
 
     try {
-      // File → ArrayBuffer → Uint8Array (vue-pdf-embed 可直接接收)
-      const buffer = await file.arrayBuffer()
-      const uint8 = new Uint8Array(buffer)
-      pdfSource.value = uint8
+      // 使用 Blob URL 作为 vue-pdf-embed 的数据源 (避免 Uint8Array 缓冲区问题)
+      if (pdfSource.value) {
+        URL.revokeObjectURL(pdfSource.value)
+      }
+      pdfSource.value = URL.createObjectURL(file)
 
       // 获取总页数
       const pdfjs = await import('pdfjs-dist')
-      const loadingTask = pdfjs.getDocument({ data: uint8.slice() })
+      const buffer = await file.arrayBuffer()
+      const loadingTask = pdfjs.getDocument({ data: buffer })
       const doc = await loadingTask.promise
       totalPages.value = doc.numPages
 
