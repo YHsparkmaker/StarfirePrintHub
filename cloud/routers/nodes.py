@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 @router.post("/register")
 async def register_node(
-    name: str,
-    mac_address: str,
+    node_id: str,
+    name: str = "",
+    mac_address: str = "",
     printer_name: str = "",
     supported_media: str = "A4",
     db: AsyncSession = Depends(get_db),
@@ -28,32 +29,35 @@ async def register_node(
     """
     注册一个新的边缘打印节点
 
-    POST /api/nodes/register?name=3楼A区&mac_address=AA:BB:CC:DD:EE:FF
+    POST /api/nodes/register?node_id=pi-3f-a01&name=3楼A区
+      注: node_id 必须与树莓派 .env 中 NODE_ID 一致
     """
-    # 检查 MAC 是否已注册
+    # 检查节点是否已注册
     existing = await db.execute(
-        select(PrintNode).where(PrintNode.mac_address == mac_address)
+        select(PrintNode).where(PrintNode.id == node_id)
     )
     node = existing.scalar_one_or_none()
 
     if node:
         # 已存在: 更新信息
-        node.name = name
-        node.printer_name = printer_name
+        node.name = name or node.name
+        node.mac_address = mac_address or node.mac_address
+        node.printer_name = printer_name or node.printer_name
         node.supported_media = supported_media
-        logger.info(f"节点已存在，更新信息: {mac_address}")
+        logger.info(f"节点已存在，更新信息: {node_id}")
     else:
         # 新节点
         node = PrintNode(
+            id=node_id,
             name=name,
             mac_address=mac_address,
             printer_name=printer_name,
             supported_media=supported_media,
         )
         db.add(node)
-        logger.info(f"新节点注册: {name} ({mac_address})")
+        logger.info(f"新节点注册: {node_id} ({name})")
 
-    await db.flush()
+    await db.commit()
     await db.refresh(node)
 
     return {

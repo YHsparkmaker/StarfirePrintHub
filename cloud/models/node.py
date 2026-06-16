@@ -3,7 +3,6 @@
 记录每个树莓派打印机节点的注册信息和健康状态。
 """
 
-import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
@@ -13,10 +12,10 @@ from database import Base
 class PrintNode(Base):
     __tablename__ = "print_nodes"
 
-    # ── 主键 ──────────────────────────────────
+    # ── 主键: 使用树莓派自定义 node_id (如 pi-3f-a01) ──
     id: Mapped[str] = mapped_column(
-        String(36), primary_key=True,
-        default=lambda: uuid.uuid4().hex
+        String(64), primary_key=True,
+        comment="节点唯一标识 (由树莓派 .env 中的 NODE_ID 指定)"
     )
 
     # ── 节点标识 ──────────────────────────────

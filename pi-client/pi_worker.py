@@ -80,6 +80,40 @@ class PiWorker:
         self._consecutive_errors = 0
 
     # ═══════════════════════════════════════════════════════════════
+    # 自动注册 (启动时调用, 幂等)
+    # ═══════════════════════════════════════════════════════════════
+
+    def _ensure_registered(self) -> bool:
+        """
+        启动时自动向云端注册本节点, 已注册则更新信息
+
+        POST /api/nodes/register?node_id=xxx&name=xxx&printer_name=xxx
+        """
+        url = f"{self.poller.base_url}/api/nodes/register"
+        params = {
+            "node_id": config.NODE_ID,
+            "name": config.NODE_NAME,
+            "printer_name": config.PRINTER_NAME,
+        }
+
+        try:
+            resp = self.poller.session.post(
+                url,
+                params=params,
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info(f"节点已注册: {data.get('node_id')} ({data.get('name')})")
+                return True
+            else:
+                logger.warning(f"节点注册返回 {resp.status_code}: {resp.text[:120]}")
+                return False
+        except Exception as e:
+            logger.warning(f"节点注册网络异常: {e}")
+            return False
+
+    # ═══════════════════════════════════════════════════════════════
     # 云端状态上报
     # ═══════════════════════════════════════════════════════════════
 
@@ -254,6 +288,9 @@ class PiWorker:
 
         # ── 启动心跳线程 ──
         self.heartbeat.start()
+
+        # ── 自动注册 (幂等) ──
+        self._ensure_registered()
 
         try:
             # ═══════════════════════════════════════════════════════

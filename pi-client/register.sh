@@ -180,6 +180,14 @@ load_env() {
 
 load_env
 
+# ── 确定 NODE_ID ──
+if [ -z "${NODE_ID:-}" ]; then
+    NODE_ID="pi-$(hostname)"
+    log_warn "未设置 NODE_ID, 使用自动生成: $NODE_ID"
+else
+    log_info "使用 NODE_ID: $NODE_ID"
+fi
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. 收集参数
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -253,7 +261,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 
 REGISTER_URL="$CLOUD_URL/api/nodes/register"
-QUERY_STRING="name=$NODE_NAME&mac_address=$MAC_ADDRESS&printer_name=$PRINTER_NAME&supported_media=$MEDIA"
+QUERY_STRING="node_id=$NODE_ID&name=$NODE_NAME&mac_address=$MAC_ADDRESS&printer_name=$PRINTER_NAME&supported_media=$MEDIA"
 FULL_URL="$REGISTER_URL?$QUERY_STRING"
 
 log_step "正在注册到云端..."
@@ -269,7 +277,7 @@ urlencode() {
 ENCODED_NAME=$(urlencode "$NODE_NAME")
 ENCODED_PRINTER=$(urlencode "$PRINTER_NAME")
 ENCODED_MEDIA=$(urlencode "$MEDIA")
-QUERY_STRING="name=${ENCODED_NAME}&mac_address=${MAC_ADDRESS}&printer_name=${ENCODED_PRINTER}&supported_media=${ENCODED_MEDIA}"
+QUERY_STRING="node_id=${NODE_ID}&name=${ENCODED_NAME}&mac_address=${MAC_ADDRESS}&printer_name=${ENCODED_PRINTER}&supported_media=${ENCODED_MEDIA}"
 FULL_URL="$REGISTER_URL?$QUERY_STRING"
 
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$FULL_URL" \
