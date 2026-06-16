@@ -416,6 +416,7 @@ async def preview_print(
     sides = opts.get("sides", "one-sided")
     copies = opts.get("copies", 1)
     orientation = opts.get("orientation", "portrait")
+    media = opts.get("media", "A4")
 
     # ── 获取源 PDF ──
     pdf_bytes: bytes
@@ -444,6 +445,7 @@ async def preview_print(
     try:
         preview_bytes = generate_preview_pdf(
             pdf_bytes=pdf_bytes,
+            media=media,
             number_up=number_up,
             sides=sides,
             copies=copies,
