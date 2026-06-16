@@ -8,6 +8,7 @@
 
 import io
 import logging
+from typing import Optional
 
 from pypdf import PdfReader, PdfWriter, PageObject, Transformation
 
@@ -41,6 +42,7 @@ def generate_preview_pdf(
     sides: str = "one-sided",
     copies: int = 1,
     orientation: str = "portrait",
+    header_info: Optional[dict] = None,
 ) -> bytes:
     """
     对 PDF 应用打印参数, 返回预览 PDF 字节
@@ -94,7 +96,11 @@ def generate_preview_pdf(
             sheet = _make_nup_sheet(chunk, cols, rows, paper_w, paper_h)
             writer.add_page(sheet)
 
-    # ── 4. 双面标注 ──
+    # ── 4. 页首信息标注 ──
+    if header_info:
+        writer = _annotate_header(writer, paper_w, paper_h, header_info)
+
+    # ── 5. 双面标注 ──
     if sides != "one-sided":
         writer = _annotate_duplex_label(writer)
 
@@ -183,6 +189,42 @@ def _make_nup_sheet(
         )
 
     return sheet
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 页首使用信息标注
+# ═══════════════════════════════════════════════════════════════════
+
+def _annotate_header(
+    writer: PdfWriter,
+    paper_w: float,
+    paper_h: float,
+    header_info: dict,
+) -> PdfWriter:
+    """在首页顶部添加使用信息标注"""
+    parts = []
+    if header_info.get("subject"):
+        parts.append(f"科目: {header_info['subject']}")
+    if header_info.get("class_name"):
+        parts.append(f"班级: {header_info['class_name']}")
+    if header_info.get("school_label"):
+        parts.append(f"{header_info['school_label']}")
+    if not parts:
+        return writer
+
+    text = "  |  ".join(parts)
+    writer.add_annotation(
+        page_number=0,
+        annotation={
+            "/Type": "/Annot",
+            "/Subtype": "/FreeText",
+            "/Contents": text,
+            "/DA": "/Helv 10 Tf 0.2 0.7 0.2 rg",
+            "/Rect": [10, paper_h - 30, paper_w - 10, paper_h - 8],
+            "/F": 4,
+        },
+    )
+    return writer
 
 
 # ═══════════════════════════════════════════════════════════════════

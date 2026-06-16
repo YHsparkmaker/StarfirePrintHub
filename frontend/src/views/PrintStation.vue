@@ -21,6 +21,36 @@
 
     <main class="relative z-10 mx-auto max-w-lg px-4 pb-20 pt-8">
       <!-- ═══════════════════════════════════════════════
+           使用信息 (科目 · 班级 · 校级标识)
+           ═══════════════════════════════════════════════ -->
+      <div class="mb-6 animate-slide-up grid grid-cols-3 gap-2">
+        <div class="cyber-panel px-3 py-2">
+          <label class="block text-[9px] uppercase tracking-[0.2em] text-gray-500 mb-1">科目</label>
+          <input
+            v-model="headerInfo.subject"
+            class="w-full bg-transparent text-xs text-gray-200 placeholder:text-gray-700 outline-none"
+            placeholder="如: 数学"
+          />
+        </div>
+        <div class="cyber-panel px-3 py-2">
+          <label class="block text-[9px] uppercase tracking-[0.2em] text-gray-500 mb-1">班级</label>
+          <input
+            v-model="headerInfo.className"
+            class="w-full bg-transparent text-xs text-gray-200 placeholder:text-gray-700 outline-none"
+            placeholder="如: 高二(3)班"
+          />
+        </div>
+        <div class="cyber-panel px-3 py-2">
+          <label class="block text-[9px] uppercase tracking-[0.2em] text-gray-500 mb-1">校标</label>
+          <input
+            v-model="headerInfo.schoolLabel"
+            class="w-full bg-transparent text-xs text-gray-200 placeholder:text-gray-700 outline-none"
+            placeholder="如: XX中学"
+          />
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════
            标题区
            ═══════════════════════════════════════════════ -->
       <header class="mb-8 text-center">
@@ -682,6 +712,15 @@ const canSubmit = computed(() => {
   return textContent.value.trim().length > 0
 })
 
+// ── 构建通用 header_info (三个字段) ──
+function buildHeaderInfo() {
+  return {
+    subject: headerInfo.subject,
+    class_name: headerInfo.className,
+    school_label: headerInfo.schoolLabel,
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // 响应式状态
 // ═══════════════════════════════════════════════════════════
@@ -710,6 +749,13 @@ const submitProgress = ref(0)
 const showSuccess = ref(false)
 const submittedJobId = ref('')
 const errorMessage = ref('')
+
+// 使用信息 (页首)
+const headerInfo = reactive({
+  subject: '',      // 科目
+  className: '',    // 班级
+  schoolLabel: '',  // 校级标识
+})
 
 // 预览状态
 const isPreviewing = ref(false)
@@ -852,6 +898,7 @@ async function handlePreview() {
       sides: printOptions.sides,
       orientation: printOptions.orientation,
       copies: printOptions.copies,
+      header_info: buildHeaderInfo(),
     }
 
     let url
@@ -891,6 +938,7 @@ async function handleSubmit() {
       sides: printOptions.sides,
       orientation: printOptions.orientation,
       copies: printOptions.copies,
+      header_info: buildHeaderInfo(),
     }
 
     let response

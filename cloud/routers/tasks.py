@@ -354,9 +354,11 @@ async def upload_text(
 
     # ── 1. Markdown + LaTeX → PDF ───────────
     try:
+        header_info = req.cups_options.get("header_info") if req.cups_options else None
         pdf_path = TextRenderService.render_to_pdf(
             markdown_text=req.content,
             filename_prefix="text",
+            header_info=header_info,
         )
     except Exception as e:
         logger.error(f"文本 PDF 渲染失败: {e}")
@@ -417,6 +419,7 @@ async def preview_print(
     copies = opts.get("copies", 1)
     orientation = opts.get("orientation", "portrait")
     media = opts.get("media", "A4")
+    header_info = opts.get("header_info")  # {subject, class_name, school_label}
 
     # ── 获取源 PDF ──
     pdf_bytes: bytes
@@ -432,6 +435,7 @@ async def preview_print(
             pdf_path = TextRenderService.render_to_pdf(
                 markdown_text=text_content,
                 filename_prefix="preview",
+                header_info=header_info,
             )
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()
@@ -450,6 +454,7 @@ async def preview_print(
             sides=sides,
             copies=copies,
             orientation=orientation,
+            header_info=header_info,
         )
     except Exception as e:
         logger.error(f"预览生成失败: {e}")

@@ -14,6 +14,7 @@ import logging
 import re
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import markdown
 from latex2mathml.converter import convert as latex_to_mathml
@@ -104,17 +105,41 @@ class TextRenderService:
     # ═══════════════════════════════════════════════════════════════
 
     @staticmethod
-    def render_to_pdf(markdown_text: str, filename_prefix: str = "text") -> Path:
+    def render_to_pdf(
+        markdown_text: str,
+        filename_prefix: str = "text",
+        header_info: Optional[dict] = None,
+    ) -> Path:
         """
         将 Markdown 文本渲染为 PDF 并保存
 
         Args:
             markdown_text: 原始 Markdown + LaTeX 文本
             filename_prefix: 文件名前缀
+            header_info: 页首使用信息 {subject, class_name, school_label}
 
         Returns:
             生成的 PDF 文件路径
         """
+        # 0. 构建页首信息 HTML
+        header_html = ""
+        if header_info:
+            parts = []
+            if header_info.get("subject"):
+                parts.append(f'<span>科目: {header_info["subject"]}</span>')
+            if header_info.get("class_name"):
+                parts.append(f'<span>班级: {header_info["class_name"]}</span>')
+            if header_info.get("school_label"):
+                parts.append(f'<span>校标: {header_info["school_label"]}</span>')
+            if parts:
+                header_html = (
+                    '<div style="border-bottom: 3px double #39ff14; '
+                    'padding-bottom: 10px; margin-bottom: 18px; '
+                    'display: flex; gap: 28px; font-size: 11pt; color: #444;">'
+                    + "".join(parts)
+                    + "</div>"
+                )
+
         # 1. LaTeX → MathML 预处理
         html_body = TextRenderService._latex_preprocess(markdown_text)
 
@@ -137,7 +162,7 @@ class TextRenderService:
         )
 
         # 3. 包裹完整 HTML
-        full_html = _HTML_TEMPLATE.format(body=html_body)
+        full_html = _HTML_TEMPLATE.format(body=header_html + html_body)
 
         # 4. HTML → PDF 并保存
         output_dir = settings.UPLOAD_DIR
