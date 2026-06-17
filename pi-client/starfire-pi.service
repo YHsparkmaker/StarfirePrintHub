@@ -1,0 +1,25 @@
+[Unit]
+Description=星火智造云打印 - 树莓派守护进程
+After=network.target cups.service
+Wants=network.target cups.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/StarfirePrintHub/pi-client
+ExecStart=/usr/bin/python3 /root/StarfirePrintHub/pi-client/pi_worker.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/starfire-pi.log
+StandardError=append:/var/log/starfire-pi.log
+
+# 环境变量
+Environment=PYTHONUNBUFFERED=1
+Environment=LOG_LEVEL=INFO
+
+# 安全加固 (可选)
+NoNewPrivileges=false
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

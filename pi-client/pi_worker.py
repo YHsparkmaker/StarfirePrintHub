@@ -43,6 +43,7 @@ from poller import JobPoller
 from printer import PrinterService
 from heartbeat import HeartbeatReporter
 from sound_player import get_sound_player, play_print_done, play_print_error
+from ota import OTAManager
 
 # ── 日志 ──────────────────────────────────────
 logging.basicConfig(
@@ -81,6 +82,12 @@ class PiWorker:
             volume=config.SOUND_VOLUME,
             tts_success=config.TTS_SUCCESS,
             tts_failure=config.TTS_FAILURE,
+        )
+
+        # ── OTA 远程管理 ──
+        self.ota = OTAManager(
+            base_url=config.CLOUD_BASE_URL,
+            node_id=config.NODE_ID,
         )
 
         # ── 运行时状态 ──
@@ -326,7 +333,13 @@ class PiWorker:
                             time.sleep(config.POLL_LONG_INTERVAL_SECONDS)
                             continue
 
-                    # ── 2. 拉取任务 ──
+                    # ── 2. OTA 远程命令轮询 ──
+                    restart_needed = self.ota.poll_and_execute()
+                    if restart_needed == "restart":
+                        logger.info("🔄 OTA 更新完成, 正在重启守护进程...")
+                        sys.exit(0)
+
+                    # ── 3. 拉取任务 ──
                     job = self.poller.fetch_next_job()
 
                     if job:
@@ -382,6 +395,7 @@ class PiWorker:
             logger.info("正在关闭 Pi Worker...")
             self.heartbeat.stop()
             self.poller.close()
+            self.ota.close()
             logger.info("👋 Pi Worker 已退出")
 
 

@@ -53,5 +53,16 @@ class PrintNode(Base):
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
 
+    # ── 远程管理 ──────────────────────────────
+    pending_command: Mapped[str] = mapped_column(
+        String(32), nullable=True,
+        comment="待执行的远程命令: restart | update | ping"
+    )
+
+    command_result: Mapped[str] = mapped_column(
+        String(512), nullable=True,
+        comment="上次命令执行结果"
+    )
+
     def __repr__(self):
         return f"<PrintNode {self.name} [{'ON' if self.is_online else 'OFF'}]>"

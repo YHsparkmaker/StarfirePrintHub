@@ -1,0 +1,20 @@
+[Unit]
+Description=星火智造云打印 - 云端 API 服务
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/StarfirePrintHub/cloud
+ExecStart=/root/StarfirePrintHub/cloud/venv/bin/python /root/StarfirePrintHub/cloud/main.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/starfire-cloud.log
+StandardError=append:/var/log/starfire-cloud.log
+
+Environment=PYTHONUNBUFFERED=1
+Environment=HOST=0.0.0.0
+Environment=PORT=8000
+
+[Install]
+WantedBy=multi-user.target

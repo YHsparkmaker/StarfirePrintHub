@@ -113,6 +113,135 @@ async def list_nodes(
             "printer_name": n.printer_name,
             "supported_media": n.supported_media,
             "last_heartbeat": n.last_heartbeat.isoformat() if n.last_heartbeat else None,
+            "pending_command": n.pending_command,
+            "command_result": n.command_result,
         }
         for n in nodes
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 远程管理: 下发命令 → 树莓派轮询执行
+# ═══════════════════════════════════════════════════════════════════
+
+CMD_PING = "ping"
+CMD_RESTART = "restart"
+CMD_UPDATE = "update"
+CMD_EXEC = "exec"
+
+ALLOWED_COMMANDS = {CMD_PING, CMD_RESTART, CMD_UPDATE, CMD_EXEC}
+
+
+@router.post("/{node_id}/command")
+async def send_command(
+    node_id: str,
+    cmd: str = CMD_PING,
+    exec_cmd: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    向节点下发远程命令。树莓派轮询心跳时自动取走并执行。
+
+    POST /api/nodes/pi-3f-a01/command?cmd=update
+    POST /api/nodes/pi-3f-a01/command?cmd=exec&exec_cmd=sudo%20systemctl%20restart%20starfire-pi
+
+    支持的命令:
+      ping      — 连通性测试, 返回 Pi 状态信息
+      restart   — 重启 pi_worker 守护进程
+      update    — git pull + 重启 (OTA 更新)
+      exec      — 执行自定义 shell 命令 (需谨慎! exec_cmd 参数)
+    """
+    if cmd not in ALLOWED_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的命令: {cmd}。允许: {', '.join(ALLOWED_COMMANDS)}",
+        )
+
+    result = await db.execute(
+        select(PrintNode).where(PrintNode.id == node_id)
+    )
+    node = result.scalar_one_or_none()
+
+    if not node:
+        raise HTTPException(status_code=404, detail="节点未注册")
+
+    if cmd == CMD_EXEC and not exec_cmd:
+        raise HTTPException(status_code=400, detail="exec 命令需要提供 exec_cmd 参数")
+
+    # 写入命令 (exec 命令附加在 pending_command 中: "exec|实际命令")
+    if cmd == CMD_EXEC:
+        node.pending_command = f"{CMD_EXEC}|{exec_cmd}"
+    else:
+        node.pending_command = cmd
+
+    node.command_result = None  # 清除上次结果
+    await db.commit()
+
+    logger.info(f"📡 命令已下发 → {node_id}: {node.pending_command}")
+    return {
+        "node_id": node.id,
+        "command": cmd,
+        "exec_cmd": exec_cmd if cmd == CMD_EXEC else "",
+        "message": f"命令已下发, 等待 {node_id} 执行",
+    }
+
+
+@router.get("/{node_id}/command")
+async def fetch_command(
+    node_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    树莓派轮询: 获取并清除待执行命令
+
+    GET /api/nodes/pi-3f-a01/command
+    返回: { "command": "update" } 或 { "command": null }
+    """
+    result = await db.execute(
+        select(PrintNode).where(PrintNode.id == node_id)
+    )
+    node = result.scalar_one_or_none()
+
+    if not node:
+        raise HTTPException(status_code=404, detail="节点未注册")
+
+    cmd = node.pending_command
+    node.pending_command = None
+    await db.commit()
+
+    return {
+        "command": cmd,
+        "node_id": node.id,
+    }
+
+
+@router.post("/{node_id}/command/result")
+async def report_command_result(
+    node_id: str,
+    cmd: str = "",
+    output: str = "",
+    success: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    树莓派上报命令执行结果
+
+    POST /api/nodes/pi-3f-a01/command/result?cmd=update&output=OK&success=true
+    """
+    result = await db.execute(
+        select(PrintNode).where(PrintNode.id == node_id)
+    )
+    node = result.scalar_one_or_none()
+
+    if not node:
+        raise HTTPException(status_code=404, detail="节点未注册")
+
+    status = "OK" if success else "FAIL"
+    node.command_result = f"{cmd}:{status} | {output[:400]}"
+    await db.commit()
+
+    logger.info(f"📡 {node_id} 命令结果: {node.command_result}")
+    return {
+        "node_id": node.id,
+        "result": node.command_result,
+    }
