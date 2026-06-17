@@ -179,7 +179,7 @@ DETECTED_MODEL=""
 if [ -n "$USB_DEVICES" ]; then
     echo "  检测到以下打印设备:"
     echo ""
-    local idx=1
+    idx=1
     mapfile -t lines <<< "$USB_DEVICES"
     for line in "${lines[@]}"; do
         echo -e "    ${GREEN}[$idx]${NC} $line"
