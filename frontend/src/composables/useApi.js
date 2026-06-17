@@ -112,7 +112,8 @@ export async function previewFile(file, cupsOptions = {}) {
     responseType: 'blob',
     timeout: 120000,
   })
-  return URL.createObjectURL(resp.data)
+  const blob = await _ensurePdfBlob(resp.data)
+  return URL.createObjectURL(blob)
 }
 
 /**
@@ -131,7 +132,31 @@ export async function previewText(content, cupsOptions = {}) {
     responseType: 'blob',
     timeout: 60000,
   })
-  return URL.createObjectURL(resp.data)
+  const blob = await _ensurePdfBlob(resp.data)
+  return URL.createObjectURL(blob)
+}
+
+/**
+ * 验证 blob 是否为有效 PDF，如果服务器返回了错误信息则抛出
+ * @param {Blob} blob
+ * @returns {Promise<Blob>}
+ */
+async function _ensurePdfBlob(blob) {
+  // PDF 文件必须以 %PDF 开头
+  const header = await blob.slice(0, 5).text()
+  if (header.startsWith('%PDF')) {
+    return blob
+  }
+  // 不是 PDF — 可能是服务器返回的错误信息 (HTML/JSON)
+  const errorText = await blob.text()
+  // 尝试解析 JSON 错误
+  try {
+    const err = JSON.parse(errorText)
+    throw new Error(err.detail || err.message || '预览生成失败')
+  } catch (parseErr) {
+    // HTML 错误页面或纯文本
+    throw new Error(errorText.slice(0, 200) || '预览生成失败 (服务器错误)')
+  }
 }
 
 /**
