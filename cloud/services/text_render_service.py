@@ -32,12 +32,14 @@ _LATEX_INLINE_RE = re.compile(r"(?<!\\)\$(.+?)(?<!\\)\$")
 # HTML 渲染模板
 # ═══════════════════════════════════════════════════════════════════
 
-_HTML_TEMPLATE = """<!DOCTYPE html>
+def _build_html(media: str) -> str:
+    """构建 HTML 模板, 纸张尺寸由 media 决定"""
+    return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
 <style>
-  @page {{ size: A4; margin: 2cm 2.2cm; }}
+  @page {{ size: {media}; margin: 2cm 2.2cm; }}
   body {{
     font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimSun", sans-serif;
     font-size: 12pt;
@@ -92,7 +94,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-{body}
+{{body}}
 </body>
 </html>"""
 
@@ -109,6 +111,7 @@ class TextRenderService:
         markdown_text: str,
         filename_prefix: str = "text",
         header_info: Optional[dict] = None,
+        media: str = "A4",
     ) -> Path:
         """
         将 Markdown 文本渲染为 PDF 并保存
@@ -117,6 +120,7 @@ class TextRenderService:
             markdown_text: 原始 Markdown + LaTeX 文本
             filename_prefix: 文件名前缀
             header_info: 页首使用信息 {subject, class_name, school_label}
+            media: 目标纸张尺寸 (A4/A3/8K/Letter 等)
 
         Returns:
             生成的 PDF 文件路径
@@ -161,8 +165,8 @@ class TextRenderService:
             },
         )
 
-        # 3. 包裹完整 HTML
-        full_html = _HTML_TEMPLATE.format(body=header_html + html_body)
+        # 3. 包裹完整 HTML (纸张尺寸由 media 决定)
+        full_html = _build_html(media).format(body=header_html + html_body)
 
         # 4. HTML → PDF 并保存
         output_dir = settings.UPLOAD_DIR

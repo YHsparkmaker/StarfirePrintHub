@@ -114,8 +114,9 @@ async def upload_file(
                 raw_bytes = f.read()
             # 提取文本 (用于在线编辑)
             extracted_text = extract_text(raw_bytes, original_name)
-            # 转换为 PDF
-            pdf_bytes = extract_text_and_convert(raw_bytes, original_name)
+            # 转换为 PDF (使用用户选择的纸张尺寸)
+            media = cups_dict.get("media", "A4")
+            pdf_bytes = extract_text_and_convert(raw_bytes, original_name, media=media)
             with open(file_path, "wb") as f:
                 f.write(pdf_bytes)
             logger.info(f"文件已转换为 PDF: {original_name}")
@@ -374,11 +375,14 @@ async def upload_text(
 
     # ── 1. Markdown + LaTeX → PDF ───────────
     try:
-        header_info = req.cups_options.get("header_info") if req.cups_options else None
+        opts = req.cups_options or {}
+        header_info = opts.get("header_info")
+        media = opts.get("media", "A4")
         pdf_path = TextRenderService.render_to_pdf(
             markdown_text=req.content,
             filename_prefix="text",
             header_info=header_info,
+            media=media,
         )
     except Exception as e:
         logger.error(f"文本 PDF 渲染失败: {e}")
@@ -493,6 +497,7 @@ async def preview_print(
                 markdown_text=text_content,
                 filename_prefix="preview",
                 header_info=header_info,
+                media=media,
             )
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()

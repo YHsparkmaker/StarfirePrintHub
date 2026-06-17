@@ -203,7 +203,7 @@
             ref="fileInputRef"
             type="file"
             accept="*/*"
-            class="hidden"
+            class="absolute -left-[9999px] opacity-0"
             @change="handleFileSelect"
           />
         </div>

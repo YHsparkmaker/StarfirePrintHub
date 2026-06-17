@@ -22,13 +22,14 @@ logger = logging.getLogger(__name__)
 # 需要转换的扩展名
 CONVERTIBLE_EXTENSIONS = {".doc", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 
-# HTML 包裹模板
-_HTML_WRAPPER = """<!DOCTYPE html>
+# HTML 包裹模板 (纸张尺寸由 media 参数决定)
+def _html_wrapper(media: str) -> str:
+    return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
 <style>
-  @page {{ size: A4; margin: 2cm 2.2cm; }}
+  @page {{ size: {media}; margin: 2cm 2.2cm; }}
   body {{
     font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimSun", sans-serif;
     font-size: 12pt;
@@ -39,7 +40,7 @@ _HTML_WRAPPER = """<!DOCTYPE html>
   }}
 </style>
 </head>
-<body>{body}</body>
+<body>{{body}}</body>
 </html>"""
 
 
@@ -49,13 +50,14 @@ def needs_conversion(filename: str) -> bool:
     return ext in CONVERTIBLE_EXTENSIONS
 
 
-def extract_text_and_convert(file_bytes: bytes, filename: str) -> bytes:
+def extract_text_and_convert(file_bytes: bytes, filename: str, media: str = "A4") -> bytes:
     """
     从 DOCX/DOC/TXT/图片 提取内容并渲染为 PDF
 
     Args:
         file_bytes: 原始文件字节
         filename: 原始文件名 (用于判断类型)
+        media: 目标纸张尺寸 (A4/A3/8K/Letter 等)
 
     Returns:
         PDF 字节内容
@@ -64,15 +66,13 @@ def extract_text_and_convert(file_bytes: bytes, filename: str) -> bytes:
 
     if ext == ".txt":
         text = file_bytes.decode("utf-8", errors="replace")
-        return _html_to_pdf(text)
+        return _html_to_pdf(text, media)
 
     elif ext == ".docx":
         text = _extract_docx(file_bytes)
-        return _html_to_pdf(text)
+        return _html_to_pdf(text, media)
 
     elif ext == ".doc":
-        # 旧版 Word 97-2003 二进制格式, python-docx 无法解析
-        # 优先用 LibreOffice 完整转换 (保留排版)
         return _convert_doc_via_libreoffice(file_bytes, filename)
 
     elif ext in (".png", ".jpg", ".jpeg"):
@@ -80,7 +80,7 @@ def extract_text_and_convert(file_bytes: bytes, filename: str) -> bytes:
         b64 = base64.b64encode(file_bytes).decode()
         mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}[ext.lstrip(".")]
         text = f'<img src="data:{mime};base64,{b64}" style="max-width:100%; height:auto;"/>'
-        return _html_to_pdf(text)
+        return _html_to_pdf(text, media)
 
     else:
         raise ValueError(f"不支持的文件类型: {ext}")
@@ -266,8 +266,8 @@ def _run_text_extractor(
 # HTML → PDF (weasyprint)
 # ═══════════════════════════════════════════════════════════════════
 
-def _html_to_pdf(html_body: str) -> bytes:
+def _html_to_pdf(html_body: str, media: str = "A4") -> bytes:
     """将 HTML 正文渲染为 PDF"""
-    html = _HTML_WRAPPER.format(body=html_body)
+    html = _html_wrapper(media).format(body=html_body)
     from weasyprint import HTML
     return HTML(string=html).write_pdf()
