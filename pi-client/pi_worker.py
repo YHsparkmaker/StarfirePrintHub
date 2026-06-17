@@ -42,6 +42,7 @@ from config import config
 from poller import JobPoller
 from printer import PrinterService
 from heartbeat import HeartbeatReporter
+from sound_player import get_sound_player, play_print_done, play_print_error
 
 # ── 日志 ──────────────────────────────────────
 logging.basicConfig(
@@ -73,6 +74,12 @@ class PiWorker:
         self.poller = JobPoller()
         self.printer = PrinterService()
         self.heartbeat = HeartbeatReporter()
+
+        # ── 提示音 ──
+        self.sound = get_sound_player(
+            enabled=config.ENABLE_SOUND,
+            volume=config.SOUND_VOLUME,
+        )
 
         # ── 运行时状态 ──
         self._running = False
@@ -226,6 +233,9 @@ class PiWorker:
             # 等待一小段时间让 CUPS 完成假脱机 (spooling)
             time.sleep(1)
 
+            # ── 播放提示音 ──
+            self.sound.play_success()
+
             return True
 
         except RuntimeError as e:
@@ -234,6 +244,7 @@ class PiWorker:
             logger.error(f"❌ {error_msg}")
             self._printer_available = False
             self._report_status(job_id, "failed", error_msg)
+            self.sound.play_error()
             return False
 
         except Exception as e:
@@ -242,6 +253,7 @@ class PiWorker:
             logger.error(f"❌ {error_msg}")
             logger.debug(traceback.format_exc())
             self._report_status(job_id, "failed", error_msg)
+            self.sound.play_error()
             return False
 
         finally:

@@ -64,6 +64,12 @@ class PiConfig:
     # ── 日志级别 ──────────────────────────────
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # ── 提示音 ────────────────────────────────
+    ENABLE_SOUND: bool = os.getenv("ENABLE_SOUND", "true").lower() in (
+        "true", "1", "yes", "on",
+    )
+    SOUND_VOLUME: float = float(os.getenv("SOUND_VOLUME", "0.7"))
+
 
 config = PiConfig()
 
