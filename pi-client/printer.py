@@ -137,7 +137,8 @@ class PrinterService:
         """建立 CUPS 连接"""
         try:
             self.conn = cups.Connection()
-            logger.info(f"CUPS 连接已建立, 服务器: {self.conn.getServer()}")
+            server = cups.getServer() if hasattr(cups, 'getServer') else 'localhost'
+            logger.info(f"CUPS 连接已建立, 服务器: {server}")
         except Exception as e:
             logger.error(f"CUPS 连接失败: {e}")
             self.conn = None

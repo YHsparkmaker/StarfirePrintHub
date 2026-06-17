@@ -43,7 +43,7 @@ def test_option_map_has_all_expected_keys():
     expected = {
         "copies", "sides", "media", "number_up",
         "orientation", "page_ranges", "print_quality",
-        "color_mode", "_raw_options",
+        "color_mode", "media_source", "_raw_options",
     }
     assert set(CUPS_OPTION_MAP.keys()) == expected
 
