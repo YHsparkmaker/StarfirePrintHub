@@ -134,4 +134,19 @@ export async function previewText(content, cupsOptions = {}) {
   return URL.createObjectURL(resp.data)
 }
 
+/**
+ * 从 DOCX/TXT 提取纯文本（仅提取，不创建打印任务）
+ * @param {File} file - DOCX/TXT 文件
+ * @returns {Promise<{text: string, filename: string}>}
+ */
+export async function extractText(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await http.post('/extract', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  })
+  return data
+}
+
 export default http

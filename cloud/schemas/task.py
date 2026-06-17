@@ -17,6 +17,7 @@ class UploadResponse(BaseModel):
     status: str = Field(default="pending", description="任务初始状态")
     file_name: str = Field(..., description="原始文件名")
     summary_text: Optional[str] = Field(None, description="AI 摘要 (若开启)")
+    extracted_text: Optional[str] = Field(None, description="提取的文本内容 (用于在线编辑)")
     created_at: str = Field(..., description="创建时间 ISO 字符串")
 
     class Config:

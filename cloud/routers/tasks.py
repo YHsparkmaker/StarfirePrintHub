@@ -105,6 +105,25 @@ async def upload_file(
         logger.error(f"文件保存失败: {e}")
         raise HTTPException(status_code=500, detail="文件保存失败")
 
+    # ── 3.5 【DOCX/TXT→PDF 转换】非 PDF 文件转为 PDF ──
+    extracted_text = None
+    from services.doc_converter import needs_conversion, extract_text_and_convert, extract_text
+    if needs_conversion(original_name):
+        try:
+            with open(file_path, "rb") as f:
+                raw_bytes = f.read()
+            # 提取文本 (用于在线编辑)
+            extracted_text = extract_text(raw_bytes, original_name)
+            # 转换为 PDF
+            pdf_bytes = extract_text_and_convert(raw_bytes, original_name)
+            with open(file_path, "wb") as f:
+                f.write(pdf_bytes)
+            logger.info(f"文件已转换为 PDF: {original_name}")
+        except Exception as e:
+            logger.error(f"文件转换失败: {e}")
+            FileService.delete(file_path)
+            raise HTTPException(status_code=500, detail=f"文件格式转换失败: {e}")
+
     # ── 4. 创建任务记录 ──────────────────────
     task = await TaskService.create_task(
         db=db,
@@ -131,6 +150,7 @@ async def upload_file(
         status=task.status,
         file_name=original_name,
         summary_text=None,  # AI 摘要在后台异步生成，响应时不阻塞
+        extracted_text=extracted_text,
         created_at=task.created_at.isoformat(),
     )
 
@@ -381,6 +401,43 @@ async def upload_text(
         summary_text=None,
         created_at=task.created_at.isoformat(),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 7b. 文件文本提取 (仅提取内容, 不创建任务)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/extract")
+async def extract_text_endpoint(
+    file: UploadFile = File(...),
+):
+    """
+    从 DOCX/TXT 提取纯文本 (用于在线编辑)
+
+    POST /api/extract
+    Content-Type: multipart/form-data
+    file: 上传的 DOCX/TXT 文件
+
+    返回: { "text": "...", "filename": "..." }
+    """
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="请上传文件")
+
+    raw_bytes = await file.read()
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail="文件为空")
+
+    from services.doc_converter import extract_text, needs_conversion
+
+    if not needs_conversion(file.filename):
+        raise HTTPException(status_code=400, detail="仅支持 DOCX/TXT 文件提取")
+
+    try:
+        text = extract_text(raw_bytes, file.filename)
+        return {"text": text, "filename": file.filename}
+    except Exception as e:
+        logger.error(f"文本提取失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文本提取失败: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

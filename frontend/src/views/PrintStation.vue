@@ -187,6 +187,15 @@
             >
               [ X ] 移除
             </button>
+            <button
+              v-if="isExtractable(selectedFile)"
+              type="button"
+              :disabled="isExtractingText"
+              class="mt-1 text-[11px] uppercase tracking-wider text-cyan/70 hover:text-cyan transition-colors"
+              @click.stop="handleExtractAndEdit"
+            >
+              {{ isExtractingText ? '[ ... ] 提取中' : '[ + ] 提取并在线编辑' }}
+            </button>
           </div>
 
           <!-- 隐藏的 input -->
@@ -277,6 +286,31 @@ $$
                 @click="printOptions.media = size.value"
               >
                 {{ size.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- ── 纸盒来源 ── -->
+          <div class="flex items-center justify-between px-5 py-4">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-gray-400">纸盒来源</span>
+              <p class="mt-0.5 text-[10px] text-gray-600">
+                {{ trayOptions.find(t => t.value === printOptions.media_source)?.label || '自动' }}
+              </p>
+            </div>
+            <div class="flex gap-1 rounded-md bg-cyber-mid p-0.5">
+              <button
+                v-for="tray in trayOptions"
+                :key="tray.value"
+                :class="[
+                  'px-2.5 py-1 text-[10px] rounded-sm transition-all duration-200',
+                  printOptions.media_source === tray.value
+                    ? 'bg-cyan/15 text-cyan shadow-[0_0_8px_rgba(0,175,175,0.1)]'
+                    : 'text-gray-500 hover:text-gray-300',
+                ]"
+                @click="printOptions.media_source = tray.value"
+              >
+                {{ tray.label }}
               </button>
             </div>
           </div>
@@ -668,7 +702,7 @@ $$
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { uploadPrintJob, uploadText, previewFile, previewText } from '@/composables/useApi'
+import { uploadPrintJob, uploadText, previewFile, previewText, extractText } from '@/composables/useApi'
 import PrintPreview from '@/components/PrintPreview.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
 import VuePdfEmbed from 'vue-pdf-embed'
@@ -738,6 +772,7 @@ const printOptions = reactive({
   sides: 'one-sided',  // 单双面
   orientation: 'portrait', // 方向
   copies: 1,           // 份数
+  media_source: 'auto', // 纸盒
 })
 
 // AI 摘要
@@ -821,6 +856,17 @@ const nUpOptions = [
   { label: '4合1', value: 4 },
 ]
 
+const trayOptions = [
+  { label: '自动', value: 'auto' },
+  { label: '纸盒1', value: 'tray-1' },
+  { label: '纸盒2', value: 'tray-2' },
+  { label: '纸盒3', value: 'tray-3' },
+  { label: '手送', value: 'manual' },
+]
+
+// ── 在线编辑标记 (上传 DOCX/TXT 后自动切换到文本编辑) ──
+const hasExtractedText = ref(false)
+
 // ═══════════════════════════════════════════════════════════════
 // 方法
 // ═══════════════════════════════════════════════════════════════
@@ -866,6 +912,33 @@ function validateAndSetFile(file) {
 function clearFile() {
   selectedFile.value = null
   fileInputRef.value.value = ''
+  hasExtractedText.value = false
+}
+
+// ── 在线编辑: 判断文件是否可提取文本 ──
+const EXTRACTABLE_EXTS = ['.doc', '.docx', '.txt']
+function isExtractable(file) {
+  if (!file) return false
+  return EXTRACTABLE_EXTS.some(ext => file.name.toLowerCase().endsWith(ext))
+}
+
+// ── 提取文本并切换到在线编辑 ──
+const isExtractingText = ref(false)
+async function handleExtractAndEdit() {
+  if (!selectedFile.value || isExtractingText.value) return
+  isExtractingText.value = true
+  try {
+    const result = await extractText(selectedFile.value)
+    if (result.text) {
+      textContent.value = result.text
+      inputMode.value = 'text'
+      hasExtractedText.value = true
+    }
+  } catch (err) {
+    errorMessage.value = '文本提取失败: ' + (err.response?.data?.detail || err.message)
+  } finally {
+    isExtractingText.value = false
+  }
 }
 
 function toggleDuplex() {
@@ -898,6 +971,7 @@ async function handlePreview() {
       sides: printOptions.sides,
       orientation: printOptions.orientation,
       copies: printOptions.copies,
+      media_source: printOptions.media_source,
       header_info: buildHeaderInfo(),
     }
 
@@ -938,6 +1012,7 @@ async function handleSubmit() {
       sides: printOptions.sides,
       orientation: printOptions.orientation,
       copies: printOptions.copies,
+      media_source: printOptions.media_source,
       header_info: buildHeaderInfo(),
     }
 

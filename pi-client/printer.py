@@ -68,6 +68,13 @@ CUPS_OPTION_MAP = {
         "default": "portrait",
         "validator": lambda v: v in ("portrait", "landscape", "reverse-portrait", "reverse-landscape"),
     },
+    # ── 纸盒来源 ──
+    "media_source": {
+        "cups_key": "media-source",
+        "type": str,
+        "default": "auto",
+        "validator": lambda v: v in ("auto", "tray-1", "tray-2", "tray-3", "tray-4", "manual", "by-pass-tray"),
+    },
     # ── 页面范围 ──
     "page_ranges": {
         "cups_key": "page-ranges",
