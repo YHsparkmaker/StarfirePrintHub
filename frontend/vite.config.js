@@ -26,10 +26,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    allowedHosts: ['paint.bubblemail.cn', 'localhost', '.local'],
+    host: '0.0.0.0',          // 允许外网访问 dev server
+    allowedHosts: ['paint.bubblemail.cn', 'localhost', '.local', '.bubblemail.cn'],
     proxy: {
       '/api': {
-        target: 'http://103.24.217.85:8000',
+        target: 'http://127.0.0.1:8000',  // 服务端 dev 代理本地后端
         changeOrigin: true,
       },
     },
