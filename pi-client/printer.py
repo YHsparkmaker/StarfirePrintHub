@@ -75,6 +75,17 @@ CUPS_OPTION_MAP = {
         "default": "auto",
         "validator": lambda v: v in ("auto", "tray-1", "tray-2", "tray-3", "tray-4", "manual", "by-pass-tray"),
     },
+    # ── 纸张类型 ──
+    "media_type": {
+        "cups_key": "media-type",
+        "type": str,
+        "default": "stationery",
+        "validator": lambda v: v in (
+            "stationery", "stationery-recycled", "stationery-lightweight",
+            "stationery-heavyweight", "transparency", "labels",
+            "envelope", "cardstock",
+        ),
+    },
     # ── 页面范围 ──
     "page_ranges": {
         "cups_key": "page-ranges",

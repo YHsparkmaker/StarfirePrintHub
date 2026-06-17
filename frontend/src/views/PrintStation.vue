@@ -315,6 +315,31 @@ $$
             </div>
           </div>
 
+          <!-- ── 纸张类型 ── -->
+          <div class="flex items-center justify-between px-5 py-4">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-gray-400">纸张类型</span>
+              <p class="mt-0.5 text-[10px] text-gray-600">
+                {{ paperTypes.find(t => t.value === printOptions.media_type)?.label || '普通纸' }}
+              </p>
+            </div>
+            <div class="flex gap-1 rounded-md bg-cyber-mid p-0.5">
+              <button
+                v-for="pt in paperTypes"
+                :key="pt.value"
+                :class="[
+                  'px-2 py-1 text-[10px] rounded-sm transition-all duration-200',
+                  printOptions.media_type === pt.value
+                    ? 'bg-neon/10 text-neon shadow-[0_0_6px_rgba(57,255,20,0.08)]'
+                    : 'text-gray-500 hover:text-gray-300',
+                ]"
+                @click="printOptions.media_type = pt.value"
+              >
+                {{ pt.label }}
+              </button>
+            </div>
+          </div>
+
           <!-- ── 页面拼版 (N-up) ── -->
           <div class="flex items-center justify-between px-5 py-4">
             <span class="text-xs uppercase tracking-wider text-gray-400">页面拼版</span>
@@ -773,6 +798,7 @@ const printOptions = reactive({
   orientation: 'portrait', // 方向
   copies: 1,           // 份数
   media_source: 'auto', // 纸盒
+  media_type: 'stationery', // 纸张类型
 })
 
 // AI 摘要
@@ -863,6 +889,15 @@ const trayOptions = [
   { label: '纸盒2', value: 'tray-2' },
   { label: '纸盒3', value: 'tray-3' },
   { label: '手送', value: 'manual' },
+]
+
+const paperTypes = [
+  { label: '普通纸', value: 'stationery' },
+  { label: '再生纸', value: 'stationery-recycled' },
+  { label: '薄纸', value: 'stationery-lightweight' },
+  { label: '厚纸', value: 'stationery-heavyweight' },
+  { label: '透明胶片', value: 'transparency' },
+  { label: '标签纸', value: 'labels' },
 ]
 
 // ── 在线编辑标记 (上传 DOCX/TXT 后自动切换到文本编辑) ──
@@ -973,6 +1008,7 @@ async function handlePreview() {
       orientation: printOptions.orientation,
       copies: printOptions.copies,
       media_source: printOptions.media_source,
+      media_type: printOptions.media_type,
       header_info: buildHeaderInfo(),
     }
 
@@ -1014,6 +1050,7 @@ async function handleSubmit() {
       orientation: printOptions.orientation,
       copies: printOptions.copies,
       media_source: printOptions.media_source,
+      media_type: printOptions.media_type,
       header_info: buildHeaderInfo(),
     }
 
