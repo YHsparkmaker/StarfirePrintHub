@@ -535,12 +535,23 @@ $$
             <span class="text-[10px] text-gray-500 uppercase tracking-wider">
               {{ inputMode === 'file' && selectedFile ? selectedFile.name : '文本渲染结果' }}
             </span>
-            <button
-              class="text-[10px] text-gray-500 hover:text-red-400/70 transition-colors"
-              @click="previewBlobUrl = null"
-            >
-              [ 关闭 ]
-            </button>
+            <div class="flex items-center gap-3">
+              <button
+                class="text-[10px] text-cyan/70 hover:text-cyan transition-colors flex items-center gap-1"
+                @click="downloadPreviewPdf"
+              >
+                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                [ 下载 PDF ]
+              </button>
+              <button
+                class="text-[10px] text-gray-500 hover:text-red-400/70 transition-colors"
+                @click="previewBlobUrl = null"
+              >
+                [ 关闭 ]
+              </button>
+            </div>
           </div>
           <div class="bg-cyber-darkest p-2">
             <VuePdfEmbed
@@ -1023,6 +1034,25 @@ async function handlePreview() {
     errorMessage.value = '预览生成失败: ' + (err.response?.data?.detail || err.message)
   } finally {
     isPreviewing.value = false
+  }
+}
+
+// ── 下载预览 PDF ──
+async function downloadPreviewPdf() {
+  if (!previewBlobUrl.value) return
+  try {
+    const resp = await fetch(previewBlobUrl.value)
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `打印预览_${new Date().toISOString().slice(0, 10)}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    errorMessage.value = 'PDF 下载失败: ' + err.message
   }
 }
 
