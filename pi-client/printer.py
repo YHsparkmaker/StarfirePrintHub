@@ -137,16 +137,46 @@ class PrinterService:
         """建立 CUPS 连接"""
         try:
             self.conn = cups.Connection()
-            server = cups.getServer() if hasattr(cups, 'getServer') else 'localhost'
+
+            # 获取服务器地址 (兼容新旧版本 pycups)
+            try:
+                server = self.conn.getServer()
+            except AttributeError:
+                server = cups.getServer() if hasattr(cups, 'getServer') else cups.getDefault() or 'localhost'
+
             logger.info(f"CUPS 连接已建立, 服务器: {server}")
+
+            # 列出所有可用打印机 (方便诊断)
+            try:
+                printers = self.conn.getPrinters()
+                if printers:
+                    names = ", ".join(printers.keys())
+                    logger.info(f"检测到 CUPS 打印机: {names}")
+                else:
+                    logger.warning("CUPS 中无任何打印机队列! 请先添加打印机:")
+                    logger.warning("  1. 浏览器打开 https://<树莓派IP>:631")
+                    logger.warning("  2. Administration → Add Printer")
+                    logger.warning("  3. 或命令行: lpadmin -p 打印机名 -E -v usb://... -m everywhere")
+            except Exception:
+                pass
+
         except Exception as e:
             logger.error(f"CUPS 连接失败: {e}")
+            logger.error("请检查:")
+            logger.error("  1. CUPS 服务是否运行?  sudo systemctl status cups")
+            logger.error("  2. pycups 是否安装?  pip install pycups")
+            logger.error("  3. 当前用户是否在 lpadmin 组?  sudo usermod -a -G lpadmin $USER")
             self.conn = None
 
     def reconnect(self):
         """重新连接 CUPS (打印机恢复后调用)"""
         logger.info("正在重新连接 CUPS...")
         self._connect()
+
+    @property
+    def is_connected(self) -> bool:
+        """CUPS 连接是否已建立"""
+        return self.conn is not None
 
     # ── 打印机状态检查 ────────────────────────
 

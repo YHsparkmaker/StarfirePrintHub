@@ -76,7 +76,9 @@ class PiWorker:
 
         # ── 运行时状态 ──
         self._running = False
-        self._printer_available = True
+        self._printer_available = self.printer.is_connected
+        if not self._printer_available:
+            logger.error("❌ CUPS 连接不可用，打印机功能受限")
         self._consecutive_errors = 0
 
     # ═══════════════════════════════════════════════════════════════
