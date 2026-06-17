@@ -202,7 +202,7 @@
           <input
             ref="fileInputRef"
             type="file"
-            :accept="ALLOWED_FILE_TYPES"
+            accept="*/*"
             class="hidden"
             @change="handleFileSelect"
           />
@@ -731,7 +731,7 @@ import { uploadPrintJob, uploadText, previewFile, previewText, extractText } fro
 import PrintPreview from '@/components/PrintPreview.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
 import VuePdfEmbed from 'vue-pdf-embed'
-import { ALLOWED_FILE_TYPES, ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB } from '@/utils/constants'
+import { ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB } from '@/utils/constants'
 
 // ── 路由 ──
 const route = useRoute()
