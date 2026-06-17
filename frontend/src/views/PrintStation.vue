@@ -682,12 +682,44 @@ $$
            成功提示
            ═══════════════════════════════════════════════ -->
       <Transition name="slide">
-        <div v-if="showSuccess" class="mt-6 cyber-panel border-neon/30 bg-neon/5 p-5 text-center">
-          <div class="mb-2 text-2xl">✓</div>
-          <p class="text-sm text-neon text-glow-neon">任务已成功发送</p>
-          <p class="mt-1 text-[10px] text-gray-500">JOB ID: {{ submittedJobId }}</p>
+        <div v-if="showSuccess" class="mt-6 space-y-3">
+          <!-- 已发送到云端 -->
+          <div class="cyber-panel border-neon/30 bg-neon/5 p-5 text-center">
+            <div class="mb-2 text-2xl">✓</div>
+            <p class="text-sm text-neon text-glow-neon">任务已成功发送到云端</p>
+            <p class="mt-1 text-[10px] text-gray-500">JOB ID: {{ submittedJobId }}</p>
+          </div>
+
+          <!-- 等待打印结果 -->
+          <div v-if="jobResult === null" class="cyber-panel border-cyan/30 bg-cyan/5 p-4 text-center">
+            <div class="mb-2 flex items-center justify-center gap-2">
+              <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan/30 border-t-cyan" />
+              <span class="text-xs text-cyan/80">等待打印机反馈...</span>
+            </div>
+            <p class="text-[10px] text-gray-500">{{ jobErrorMsg || '打印任务正在队列中处理' }}</p>
+          </div>
+
+          <!-- 打印成功 -->
+          <div v-if="jobResult === 'completed'" class="cyber-panel border-neon/30 bg-neon/5 p-4 text-center">
+            <div class="mb-1 text-xl">🖨️</div>
+            <p class="text-sm text-neon text-glow-neon">打印已完成</p>
+            <p class="mt-1 text-[10px] text-gray-500">打印机已成功输出该任务</p>
+          </div>
+
+          <!-- 打印失败 -->
+          <div v-if="jobResult === 'failed'" class="cyber-panel border-red-400/30 bg-red-500/5 p-4">
+            <p class="flex items-start gap-2 text-xs text-red-400">
+              <span class="mt-0.5 shrink-0 font-bold">✗</span>
+              <span class="flex-1">
+                <span class="font-bold">打印失败</span>
+                <span v-if="jobErrorMsg" class="block mt-1 text-red-400/70">{{ jobErrorMsg }}</span>
+              </span>
+            </p>
+          </div>
+
+          <!-- 重新发送 -->
           <button
-            class="mt-4 text-[11px] uppercase tracking-wider text-cyan hover:text-cyan/80 transition-colors"
+            class="w-full text-[11px] uppercase tracking-wider text-cyan hover:text-cyan/80 transition-colors py-2"
             @click="resetForm"
           >
             [ 发送新任务 ]
@@ -738,7 +770,7 @@ $$
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { uploadPrintJob, uploadText, previewFile, previewText, extractText } from '@/composables/useApi'
+import { uploadPrintJob, uploadText, previewFile, previewText, extractText, getJobStatus } from '@/composables/useApi'
 import PrintPreview from '@/components/PrintPreview.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
 import VuePdfEmbed from 'vue-pdf-embed'
@@ -820,6 +852,9 @@ const isSubmitting = ref(false)
 const submitProgress = ref(0)
 const showSuccess = ref(false)
 const submittedJobId = ref('')
+const jobResult = ref(null)    // null → 等待中 | 'completed' → 成功 | 'failed' → 失败
+const jobErrorMsg = ref('')    // 失败原因
+let jobPollTimer = null
 const errorMessage = ref('')
 
 // 使用信息 (页首)
@@ -1108,6 +1143,8 @@ async function handleSubmit() {
     // 成功
     submitProgress.value = 100
     submittedJobId.value = response.job_id
+    jobResult.value = null       // 重置, 开始等待打印结果
+    jobErrorMsg.value = ''
 
     // 短暂延迟展示完成效果
     await sleep(600)
@@ -1115,6 +1152,9 @@ async function handleSubmit() {
     stopSubmitAnimation()
     isSubmitting.value = false
     showSuccess.value = true
+
+    // ── 轮询任务最终状态 ──
+    startJobPolling(submittedJobId.value)
 
   } catch (err) {
     stopSubmitAnimation()
@@ -1179,7 +1219,48 @@ function stopSubmitAnimation() {
   if (messageTimer) { clearInterval(messageTimer); messageTimer = null }
 }
 
+// ── 轮询任务最终状态 (成功/失败 + 原因) ──
+function startJobPolling(jobId) {
+  stopJobPolling()
+
+  let polls = 0
+  const MAX_POLLS = 40          // 最多轮询 40 次 (约 2 分钟)
+  const INTERVAL_MS = 3000
+
+  jobPollTimer = setInterval(async () => {
+    polls++
+    try {
+      const data = await getJobStatus(jobId)
+      if (data.status === 'completed') {
+        jobResult.value = 'completed'
+        stopJobPolling()
+      } else if (data.status === 'failed') {
+        jobResult.value = 'failed'
+        jobErrorMsg.value = data.error_msg || '未知错误'
+        stopJobPolling()
+      } else if (polls >= MAX_POLLS) {
+        // 超时 — 不做判定, 保留 null 状态
+        jobErrorMsg.value = '等待打印结果超时 (仍在队列中)'
+        stopJobPolling()
+      }
+    } catch (err) {
+      // 网络波动不中断轮询, 只在超过一半失败时停止
+      if (polls >= MAX_POLLS) {
+        stopJobPolling()
+      }
+    }
+  }, INTERVAL_MS)
+}
+
+function stopJobPolling() {
+  if (jobPollTimer) {
+    clearInterval(jobPollTimer)
+    jobPollTimer = null
+  }
+}
+
 function resetForm() {
+  stopJobPolling()  // 清理轮询定时器
   selectedFile.value = null
   showSuccess.value = false
   submittedJobId.value = ''
@@ -1212,6 +1293,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
   stopSubmitAnimation()
+  stopJobPolling()
 })
 </script>
 
