@@ -88,7 +88,7 @@ async def node_heartbeat(
 
     node.is_online = True
     node.last_heartbeat = datetime.now(timezone.utc)
-    await db.flush()
+    await db.commit()
 
     return {
         "node_id": node.id,

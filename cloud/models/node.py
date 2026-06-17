@@ -24,8 +24,8 @@ class PrintNode(Base):
         comment="节点名称 (如 '3楼A区打印机')"
     )
     mac_address: Mapped[str] = mapped_column(
-        String(17), unique=True, nullable=True,
-        comment="树莓派 MAC 地址, 用于唯一识别"
+        String(17), nullable=True,
+        comment="树莓派 MAC 地址"
     )
 
     # ── 状态 ──────────────────────────────────
