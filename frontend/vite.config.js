@@ -26,6 +26,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    allowedHosts: ['paint.bubblemail.cn', 'localhost', '.local'],
     proxy: {
       '/api': {
         target: 'http://103.24.217.85:8000',
