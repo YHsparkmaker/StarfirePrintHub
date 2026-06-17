@@ -50,7 +50,7 @@ CUPS_OPTION_MAP = {
         "type": str,
         "default": "A4",
         "validator": lambda v: v in (
-            "A4", "A3", "Letter", "Legal",
+            "A4", "A3", "8K", "Letter", "Legal",
             "B4", "B5", "4x6", "5x7",
         ),
     },

@@ -847,6 +847,7 @@ const isLandscape = computed({
 const paperSizes = [
   { label: 'A4', value: 'A4' },
   { label: 'A3', value: 'A3' },
+  { label: '8K', value: '8K' },
   { label: 'LTR', value: 'Letter' },
 ]
 
