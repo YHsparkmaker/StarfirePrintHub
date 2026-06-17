@@ -128,8 +128,14 @@ CMD_PING = "ping"
 CMD_RESTART = "restart"
 CMD_UPDATE = "update"
 CMD_EXEC = "exec"
+CMD_TUNNEL = "tunnel"
+CMD_TUNNEL_CLOSE = "tunnel-close"
+CMD_TUNNEL_STATUS = "tunnel-status"
 
-ALLOWED_COMMANDS = {CMD_PING, CMD_RESTART, CMD_UPDATE, CMD_EXEC}
+ALLOWED_COMMANDS = {
+    CMD_PING, CMD_RESTART, CMD_UPDATE, CMD_EXEC,
+    CMD_TUNNEL, CMD_TUNNEL_CLOSE, CMD_TUNNEL_STATUS,
+}
 
 
 @router.post("/{node_id}/command")
@@ -146,10 +152,13 @@ async def send_command(
     POST /api/nodes/pi-3f-a01/command?cmd=exec&exec_cmd=sudo%20systemctl%20restart%20starfire-pi
 
     支持的命令:
-      ping      — 连通性测试, 返回 Pi 状态信息
-      restart   — 重启 pi_worker 守护进程
-      update    — git pull + 重启 (OTA 更新)
-      exec      — 执行自定义 shell 命令 (需谨慎! exec_cmd 参数)
+      ping          — 连通性测试, 返回 Pi 状态信息
+      restart       — 重启 pi_worker 守护进程
+      update        — git pull + 重启 (OTA 更新)
+      exec          — 执行自定义 shell 命令 (需谨慎! exec_cmd 参数)
+      tunnel        — 打开反向 SSH 隧道 (Pi→公网跳板, 远程可SSH登录Pi)
+      tunnel-close  — 关闭 SSH 隧道
+      tunnel-status — 查询隧道状态
     """
     if cmd not in ALLOWED_COMMANDS:
         raise HTTPException(

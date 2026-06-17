@@ -7,16 +7,21 @@
   3. 上报结果 POST /api/nodes/{node_id}/command/result
 
 支持命令:
-  ping     — 返回树莓派状态 (IP/磁盘/CPU温度/uptime)
-  restart  — sudo systemctl restart starfire-pi
-  update   — git pull + sudo systemctl restart starfire-pi
-  exec     — 执行自定义 shell 命令
+  ping          — 返回树莓派状态 (IP/磁盘/CPU温度/uptime)
+  restart       — sudo systemctl restart starfire-pi
+  update        — git pull + sudo systemctl restart starfire-pi
+  exec          — 执行自定义 shell 命令
+  tunnel        — 打开反向 SSH 隧道 (公网远程 SSH 登录树莓派)
+  tunnel-close  — 关闭 SSH 隧道
+  tunnel-status — 查询隧道连接信息
 """
 
+import atexit
 import logging
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -38,6 +43,13 @@ class OTAManager:
         self.node_id = node_id
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "StarfirePrintHub-OTA/1.0"
+
+        # SSH 隧道状态
+        self._tunnel_proc: subprocess.Popen | None = None
+        self._tunnel_info: str = ""  # 用户连接信息
+
+        # 退出时自动关闭隧道
+        atexit.register(self._cleanup_tunnel)
 
     def poll_and_execute(self) -> str:
         """
@@ -105,6 +117,15 @@ class OTAManager:
 
             elif cmd == "exec":
                 return self._cmd_exec(exec_cmd)
+
+            elif cmd == "tunnel":
+                return self._cmd_tunnel_open()
+
+            elif cmd == "tunnel-close":
+                return self._cmd_tunnel_close()
+
+            elif cmd == "tunnel-status":
+                return self._cmd_tunnel_status()
 
             else:
                 return False, f"未知命令: {cmd}"
@@ -234,6 +255,159 @@ class OTAManager:
             return False, f"命令异常: {e}"
 
     # ═══════════════════════════════════════════════════════════════
+    # SSH 反向隧道 (公网远程 SSH 登录树莓派)
+    # ═══════════════════════════════════════════════════════════════
+
+    def _cmd_tunnel_open(self) -> tuple[bool, str]:
+        """
+        打开反向 SSH 隧道: Pi → 公网跳板 → 用户可以从公网 SSH 到 Pi
+
+        工作原理:
+          树莓派主动 ssh -R 连接到公网服务器, 将该服务器的某个端口
+          映射到树莓派的 22 端口。用户 SSH 到公网服务器的那个端口
+          就等于 SSH 登录到了树莓派。
+
+        零配置方案 (serveo.net):
+          ssh -R starfire-pi:22:localhost:22 serveo.net
+          → 用户: ssh -J serveo.net pi@starfire-pi
+
+        自定义方案 (.env TUNNEL_HOST):
+          配置你自己的公网服务器, Pi 自动开隧道过去。
+        """
+        if self._tunnel_proc is not None and self._tunnel_proc.poll() is None:
+            # 隧道已在运行
+            return True, self._tunnel_info or "tunnel-active"
+
+        # 检查 SSH 是否可用
+        if not shutil.which("ssh"):
+            return False, "SSH 客户端未安装: sudo apt install openssh-client"
+
+        # 读取配置
+        tunnel_host = os.getenv("TUNNEL_HOST", "serveo.net")
+        tunnel_port = os.getenv("TUNNEL_PORT", "0")      # 0=服务端自动分配
+        tunnel_user = os.getenv("TUNNEL_USER", "")
+        tunnel_ssh_key = os.getenv("TUNNEL_SSH_KEY", os.path.expanduser("~/.ssh/id_rsa"))
+        local_ssh_port = os.getenv("TUNNEL_LOCAL_PORT", "22")
+
+        # 构建目标地址
+        if tunnel_user:
+            destination = f"{tunnel_user}@{tunnel_host}"
+        else:
+            destination = tunnel_host
+
+        # 构建 ssh -R 命令
+        # -R [bind_address:]port:host:hostport
+        # 如果 tunnel_port=0, serveo 会分配随机端口并返回 URL
+        if tunnel_port == "0":
+            remote_bind = f"0:localhost:{local_ssh_port}"
+        else:
+            remote_bind = f"{tunnel_port}:localhost:{local_ssh_port}"
+
+        ssh_args = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ServerAliveInterval=60",
+            "-o", "ServerAliveCountMax=3",
+            "-o", "ExitOnForwardFailure=yes",
+            "-R", remote_bind,
+            "-N",  # 不执行远程命令, 只做端口转发
+            "-T",  # 禁用伪终端
+        ]
+
+        # SSH 密钥
+        if os.path.isfile(tunnel_ssh_key):
+            ssh_args.extend(["-i", tunnel_ssh_key])
+
+        ssh_args.append(destination)
+
+        logger.info(f"🔗 打开 SSH 隧道: {' '.join(ssh_args)}")
+
+        try:
+            self._tunnel_proc = subprocess.Popen(
+                ssh_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,  # 脱离当前进程组, 不会被一起杀掉
+            )
+
+            # 等待一小段时间让连接建立
+            time.sleep(3)
+
+            # 检查是否仍然存活
+            if self._tunnel_proc.poll() is not None:
+                stderr_output = self._tunnel_proc.stderr.read() if self._tunnel_proc.stderr else ""
+                return False, f"隧道建立失败: {stderr_output[:200]}"
+
+            # 构建连接信息
+            if tunnel_host == "serveo.net":
+                # serveo.net 分配随机公网地址
+                # 模式: ssh -R starfire-pi:22:localhost:22 serveo.net
+                # 用户: ssh -J serveo.net pi@starfire-pi
+                relay_info = (
+                    f"SSH 隧道已建立! 在任意有网络的电脑上执行:\n"
+                    f"  ssh -J serveo.net pi@{self.node_id}\n\n"
+                    f"首次使用 serveo 可能需确认指纹, 输入 yes 即可。"
+                )
+                self._tunnel_info = relay_info
+            else:
+                port_display = tunnel_port if tunnel_port != "0" else "(自动分配)"
+                relay_info = (
+                    f"SSH 隧道已建立! 连接方式:\n"
+                    f"  ssh -p {port_display} pi@{tunnel_host}"
+                )
+                self._tunnel_info = relay_info
+
+            logger.info(f"✅ {relay_info}")
+            return True, relay_info
+
+        except Exception as e:
+            self._tunnel_proc = None
+            return False, f"隧道打开失败: {e}"
+
+    def _cmd_tunnel_close(self) -> tuple[bool, str]:
+        """关闭 SSH 隧道"""
+        if self._tunnel_proc is None or self._tunnel_proc.poll() is not None:
+            self._tunnel_proc = None
+            self._tunnel_info = ""
+            return True, "tunnel-already-closed"
+
+        logger.info("🔗 关闭 SSH 隧道...")
+        try:
+            # 发送 SIGTERM 到进程组
+            os.killpg(os.getpgid(self._tunnel_proc.pid), signal.SIGTERM)
+            self._tunnel_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(os.getpgid(self._tunnel_proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except Exception as e:
+            logger.debug(f"关闭隧道进程异常: {e}")
+
+        self._tunnel_proc = None
+        self._tunnel_info = ""
+        logger.info("🔗 SSH 隧道已关闭")
+        return True, "tunnel-closed"
+
+    def _cmd_tunnel_status(self) -> tuple[bool, str]:
+        """查询隧道状态"""
+        if self._tunnel_proc is not None and self._tunnel_proc.poll() is None:
+            return True, self._tunnel_info or "tunnel-active"
+        else:
+            self._tunnel_proc = None
+            self._tunnel_info = ""
+            return True, "tunnel-inactive"
+
+    def _cleanup_tunnel(self):
+        """进程退出时自动清理隧道"""
+        if self._tunnel_proc is not None:
+            try:
+                os.killpg(os.getpgid(self._tunnel_proc.pid), signal.SIGTERM)
+            except Exception:
+                pass
+            self._tunnel_proc = None
+
+    # ═══════════════════════════════════════════════════════════════
     # 上报结果
     # ═══════════════════════════════════════════════════════════════
 
@@ -253,4 +427,5 @@ class OTAManager:
             logger.debug(f"命令结果上报失败: {e}")
 
     def close(self):
+        self._cleanup_tunnel()
         self.session.close()
