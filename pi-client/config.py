@@ -70,6 +70,10 @@ class PiConfig:
     )
     SOUND_VOLUME: float = float(os.getenv("SOUND_VOLUME", "0.7"))
 
+    # ── TTS 播报文本 ───────────────────────────
+    TTS_SUCCESS: str = os.getenv("TTS_SUCCESS", "打印完成")
+    TTS_FAILURE: str = os.getenv("TTS_FAILURE", "打印失败，请检查打印机")
+
 
 config = PiConfig()
 

@@ -79,6 +79,8 @@ class PiWorker:
         self.sound = get_sound_player(
             enabled=config.ENABLE_SOUND,
             volume=config.SOUND_VOLUME,
+            tts_success=config.TTS_SUCCESS,
+            tts_failure=config.TTS_FAILURE,
         )
 
         # ── 运行时状态 ──
