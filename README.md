@@ -32,7 +32,23 @@ git clone https://gitee.com/ZhangliZennon/StarfirePrintHub.git
 cd StarfirePrintHub/pi-client
 ```
 
-### 2. 运行配置向导
+### 2. 安装依赖 (一键)
+
+```bash
+# 全部安装 (基础 + TTS + LibreOffice + SSH 工具)
+bash install-deps.sh --all
+
+# 最小安装 (仅基础依赖)
+bash install-deps.sh --min
+
+# 交互模式 (选择需要的组件)
+bash install-deps.sh
+
+# 先检测, 不安装
+bash install-deps.sh --dry
+```
+
+### 3. 运行配置向导
 
 ```bash
 bash setup.sh
@@ -42,8 +58,8 @@ bash setup.sh
 
 | 步骤 | 内容 | 自动化 |
 |------|------|--------|
-| 1. 系统依赖 | 检查 Python3 / pip / CUPS / libcups2-dev / lpadmin 组 | 缺啥自动装 |
-| 2. Python 包 | 安装 pycups / requests / tenacity / python-dotenv | 自动 |
+| 1. 系统依赖 | 验证 Python3 / pip / CUPS / libcups2-dev / lpadmin 组 | 已验证 (install-deps.sh 已安装) |
+| 2. Python 包 | 验证 pycups / requests / tenacity / python-dotenv | 自动 |
 | 3. CUPS 打印机 | `lpinfo -v` 扫描 USB/IPP → 自动 `lpadmin` 添加 → 设为默认 | 引导选择 |
 | 4. .env 配置 | 交互输入云端地址 / 节点ID / 名称 / 打印机名 → 自动生成 | 交互 |
 | 5. 云端注册 | `POST /api/nodes/register` 注册节点 | 自动 |
@@ -54,7 +70,7 @@ bash setup.sh
 bash setup.sh --quick
 ```
 
-### 3. 安装开机自启动
+### 4. 安装开机自启动
 
 ```bash
 sudo bash install-services.sh pi
@@ -70,7 +86,7 @@ journalctl -u starfire-pi -f           # 实时日志
 sudo bash install-services.sh remove   # 卸载
 ```
 
-### 4. 可选: 安装 TTS 语音播报
+### 5. 可选: 安装 TTS 语音播报
 
 ```bash
 # 离线方案 (秒级响应)

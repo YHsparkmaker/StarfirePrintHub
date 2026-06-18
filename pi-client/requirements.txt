@@ -10,5 +10,10 @@ python-dotenv==1.0.1
 # 指数退避重试
 tenacity==9.0.0
 
+# ── 可选依赖 (通过 install-deps.sh --all 自动安装) ──
+# pygame==2.6.1          # TTS 蜂鸣回退 / 音频播放
+# numpy==2.2.0           # pygame 音频合成
+# edge-tts==6.1.16       # Microsoft Edge TTS (在线高质量)
+
 # 测试
 pytest==8.3.4
