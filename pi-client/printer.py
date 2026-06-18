@@ -116,6 +116,21 @@ CUPS_OPTION_MAP = {
     },
 }
 
+# ── 纸张尺寸映射 (名称 → 宽x高 mm) ──
+# CUPS 对非标准/中文命名纸张 (8K, B4 等) 可能不识别，
+# 必须转为 Custom.WIDTHxHEIGHTmm 格式才能被所有打印机接受。
+PAPER_DIMENSIONS_MM: dict[str, tuple[int, int]] = {
+    "A4":     (210, 297),
+    "A3":     (297, 420),
+    "8K":     (270, 390),
+    "Letter": (216, 279),
+    "Legal":  (216, 356),
+    "B4":     (250, 353),
+    "B5":     (176, 250),
+    "4x6":    (102, 152),
+    "5x7":    (127, 178),
+}
+
 
 class PrinterService:
     """
@@ -337,14 +352,25 @@ class PrinterService:
         # ── 2. 参数映射 ──
         cups_options = self._map_options(options)
 
-        # ── 2.5 强制适配纸张 ──
-        # CUPS pdftopdf 滤镜默认优先读取 PDF 内嵌 /MediaBox，
-        # 忽略用户显式设置的 media 选项。追加 fit-to-page
-        # 强制将内容缩放/裁切到用户选择的纸张尺寸。
-        if options.get("media"):
+        # ── 2.5 纸张尺寸强制适配 ──
+        # CUPS pdftopdf 滤镜优先读取 PDF 内嵌 /MediaBox，
+        # 忽略 media 选项。且 CUPS 可能不识别中文命名 (8K/B4)。
+        # 解决: 1) 转为 Custom.WxHmm 格式, 2) 追加 fit-to-page, 3) 追加 Media (PPD).
+        media_name = options.get("media")
+        if media_name:
+            dims = PAPER_DIMENSIONS_MM.get(media_name)
+            if dims:
+                w, h = dims
+                custom_media = f"Custom.{w}x{h}mm"
+                cups_options["media"] = custom_media
+                logger.info(
+                    f"纸张尺寸: {media_name} → {custom_media}"
+                )
             cups_options["fit-to-page"] = "true"
+            # 部分 PPD 只认大写 Media 属性，追加透传
+            cups_options["Media"] = cups_options.get("media", media_name)
             logger.info(
-                f"强制适配纸张: fit-to-page=true (用户选择 {options['media']})"
+                f"强制适配纸张: fit-to-page=true Media={cups_options['Media']}"
             )
 
         logger.info(f"打印参数: {cups_options}")
