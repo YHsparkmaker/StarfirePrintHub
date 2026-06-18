@@ -336,6 +336,17 @@ class PrinterService:
 
         # ── 2. 参数映射 ──
         cups_options = self._map_options(options)
+
+        # ── 2.5 强制适配纸张 ──
+        # CUPS pdftopdf 滤镜默认优先读取 PDF 内嵌 /MediaBox，
+        # 忽略用户显式设置的 media 选项。追加 fit-to-page
+        # 强制将内容缩放/裁切到用户选择的纸张尺寸。
+        if options.get("media"):
+            cups_options["fit-to-page"] = "true"
+            logger.info(
+                f"强制适配纸张: fit-to-page=true (用户选择 {options['media']})"
+            )
+
         logger.info(f"打印参数: {cups_options}")
 
         # ── 3. 提交到 CUPS 队列 ──
