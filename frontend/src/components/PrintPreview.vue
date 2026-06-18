@@ -187,6 +187,15 @@ watch(
     error.value = ''
     currentPage.value = 1
 
+    // 只有 PDF 文件才渲染预览 (DOCX/TXT 不渲染)
+    const isPdf = file.name?.toLowerCase().endsWith('.pdf') ||
+                  file.type === 'application/pdf'
+    if (!isPdf) {
+      loading.value = false
+      // DOCX/TXT/PNG — 不尝试解析, 直接跳过
+      return
+    }
+
     try {
       // 使用 Blob URL 作为 vue-pdf-embed 的数据源 (避免 Uint8Array 缓冲区问题)
       if (pdfSource.value) {
