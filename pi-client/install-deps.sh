@@ -59,14 +59,20 @@ pip_break=""
 if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
     pip_break="--break-system-packages"
 fi
+# pip 24.3+ 阻止 root 用户安装, 需显式忽略
+pip_root=""
+if pip3 install --help 2>/dev/null | grep -q -- '--root-user-action'; then
+    pip_root="--root-user-action=ignore"
+fi
+PIP_SAFE="$pip_break $pip_root"
 
 # dry-run 时的非安装操作
 if $DRY_RUN; then
     DRY_APT="echo [dry] sudo apt install -y"
-    DRY_PIP="echo [dry] sudo pip3 install $pip_break"
+    DRY_PIP="echo [dry] sudo pip3 install $PIP_SAFE"
 else
     DRY_APT="sudo apt install -y"
-    DRY_PIP="sudo pip3 install $pip_break"
+    DRY_PIP="sudo pip3 install $PIP_SAFE"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -191,7 +197,7 @@ else
     $DRY_PIP pycups 2>&1 | tail -1 || {
         log_warn "pycups 编译失败, 尝试无缓存重装..."
         if ! $DRY_RUN; then
-            sudo pip3 install --no-cache-dir --force-reinstall pycups $pip_break 2>/dev/null || log_error "pycups 安装失败, 请确认 libcups2-dev 已安装"
+            sudo pip3 install --no-cache-dir --force-reinstall pycups $PIP_SAFE 2>/dev/null || log_error "pycups 安装失败, 请确认 libcups2-dev 已安装"
         fi
     }
     pip_installed "cups" && log_ok "pycups 已安装" || log_error "pycups 仍未安装"
