@@ -36,6 +36,46 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
+# ── 启动前诊断 ──────────────────────────────
+_DIAG_ERRORS = []
+
+# 0. 检查 cwd 与 .env
+_env_path = Path(__file__).resolve().parent / ".env"
+if not _env_path.exists():
+    _DIAG_ERRORS.append(f".env 文件不存在: {_env_path}")
+
+# 1. 检查关键依赖是否可导入
+_critical_imports = {
+    "requests": "pip3 install requests --break-system-packages",
+    "dotenv": "pip3 install python-dotenv --break-system-packages",
+    "tenacity": "pip3 install tenacity --break-system-packages",
+    "cups": "sudo apt install libcups2-dev && pip3 install pycups --break-system-packages",
+}
+for mod, fix_cmd in _critical_imports.items():
+    try:
+        __import__(mod)
+    except ImportError:
+        _DIAG_ERRORS.append(f"缺少 {mod} 模块. 修复: {fix_cmd}")
+
+# 2. 检查 python-dotenv 加载
+if "dotenv" not in [e.split()[1] for e in _DIAG_ERRORS if "缺少" in e]:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except Exception as e:
+        _DIAG_ERRORS.append(f".env 加载失败: {e}")
+
+# 3. 打印诊断结果
+if _DIAG_ERRORS:
+    print("\n" + "=" * 60, flush=True)
+    print("[星火] 树莓派守护启动失败 — 诊断报告", flush=True)
+    print("=" * 60, flush=True)
+    for i, err in enumerate(_DIAG_ERRORS, 1):
+        print(f"  [{i}] {err}", flush=True)
+    print("=" * 60, flush=True)
+    print("\n请先运行一键安装脚本:\n  bash install-deps.sh --all\n", flush=True)
+    sys.exit(1)
+
 import requests
 
 from config import config
