@@ -49,6 +49,21 @@
 
           <!-- PDF 内容 -->
           <div class="flex min-h-[320px] items-center justify-center p-4">
+            <!-- 非 PDF 文件提示 -->
+            <div v-if="notPdf" class="flex flex-col items-center gap-3 py-10 text-center px-8">
+              <p class="text-[10px] uppercase tracking-[0.2em] text-cyan/60">
+                {{ file.name?.toLowerCase().endsWith('.doc')
+                   || file.name?.toLowerCase().endsWith('.docx') ? 'WORD 文档' :
+                   file.name?.toLowerCase().endsWith('.txt') ? '纯文本' :
+                   file.name?.toLowerCase().endsWith('.png') || file.name?.toLowerCase().endsWith('.jpg') ? '图片' :
+                   '非 PDF 文件' }}
+              </p>
+              <p class="text-[9px] text-gray-500 leading-relaxed">
+                此文件类型不支持直接预览。<br />
+                配置打印参数后点击下方 <span class="text-cyan/70">「预览打印效果」</span> 查看渲染结果。
+              </p>
+            </div>
+
             <!-- 加载动画 -->
             <div v-if="loading" class="flex flex-col items-center gap-3 py-12">
               <svg class="h-10 w-10 animate-spin text-neon/30" viewBox="0 0 24 24" fill="none">
@@ -156,6 +171,8 @@ const currentPage = ref(1)
 const totalPages = ref(0)
 const loading = ref(false)
 const error = ref('')
+const notPdf = ref(false)      // 非 PDF 文件提示
+const isPdf = ref(false)       // 当前文件是否为 PDF
 const pdfSource = shallowRef(null)
 
 // ── Worker 路径 — dev 直接引用 node_modules, prod 用 static copy ──
@@ -179,23 +196,29 @@ watch(
       totalPages.value = 0
       currentPage.value = 1
       error.value = ''
+      notPdf.value = false
+      isPdf.value = false
       loading.value = false
       return
     }
 
     loading.value = true
     error.value = ''
+    notPdf.value = false
+    isPdf.value = false
     currentPage.value = 1
 
     // 只有 PDF 文件才渲染预览 (DOCX/TXT 不渲染)
-    const isPdf = file.name?.toLowerCase().endsWith('.pdf') ||
-                  file.type === 'application/pdf'
-    if (!isPdf) {
+    const isPdfFile = file.name?.toLowerCase().endsWith('.pdf') ||
+                      file.type === 'application/pdf'
+    if (!isPdfFile) {
       loading.value = false
-      // DOCX/TXT/PNG — 不尝试解析, 直接跳过
+      notPdf.value = true
+      isPdf.value = false
       return
     }
 
+    isPdf.value = true
     try {
       // 使用 Blob URL 作为 vue-pdf-embed 的数据源 (避免 Uint8Array 缓冲区问题)
       if (pdfSource.value) {

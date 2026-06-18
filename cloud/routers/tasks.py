@@ -487,9 +487,21 @@ async def preview_print(
 
     if file and file.filename:
         # 文件模式
-        pdf_bytes = await file.read()
-        if not pdf_bytes:
+        raw_bytes = await file.read()
+        if not raw_bytes:
             raise HTTPException(status_code=400, detail="上传的文件为空")
+
+        # ── 非 PDF 文件先转换为 PDF ──
+        from services.doc_converter import needs_conversion, extract_text_and_convert
+        if needs_conversion(file.filename):
+            try:
+                pdf_bytes = extract_text_and_convert(raw_bytes, file.filename, media=media)
+                logger.info(f"预览: 文件已转换为 PDF: {file.filename}")
+            except Exception as e:
+                logger.error(f"预览文件转换失败: {e}")
+                raise HTTPException(status_code=500, detail=f"文件格式转换失败: {e}")
+        else:
+            pdf_bytes = raw_bytes
     elif text_content and text_content.strip():
         # 文本模式: 先渲染为 PDF
         try:

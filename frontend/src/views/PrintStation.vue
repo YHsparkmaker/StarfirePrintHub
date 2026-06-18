@@ -258,8 +258,7 @@ $$
       <!-- ═══════════════════════════════════════════════
            打印预览 (选中文件后自动展示)
            ═══════════════════════════════════════════════ -->
-      <PrintPreview v-if="inputMode === 'file' && isPdfFile" :file="selectedFile" class="mb-6" />
-      <!-- ═══════════════════════════════════════════════
+      <PrintPreview v-if="inputMode === 'file'" :file="selectedFile" class="mb-6" />      <!-- ═══════════════════════════════════════════════
            打印参数面板
            ═══════════════════════════════════════════════ -->
       <section class="animate-slide-up mb-6" style="animation-delay: 0.1s">
@@ -830,11 +829,6 @@ function buildHeaderInfo() {
 const fileInputRef = ref(null)
 const dropZoneRef = ref(null)
 const selectedFile = ref(null)
-const isPdfFile = computed(() => {
-  const f = selectedFile.value
-  if (!f) return false
-  return f.name?.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf'
-})
 const isDragging = ref(false)
 
 // 打印参数
