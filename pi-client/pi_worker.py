@@ -82,7 +82,7 @@ from config import config
 from poller import JobPoller
 from printer import PrinterService
 from heartbeat import HeartbeatReporter
-from sound_player import get_sound_player, play_print_done, play_print_error
+from sound_player import get_sound_player
 from ota import OTAManager
 
 # ── 日志 ──────────────────────────────────────
