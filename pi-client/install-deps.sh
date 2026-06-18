@@ -54,13 +54,19 @@ pip_installed() {
     python3 -c "import $1" 2>/dev/null
 }
 
+# ── 检测 pip 版本 (兼容旧版 pip 无 --break-system-packages) ──
+pip_break=""
+if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+    pip_break="--break-system-packages"
+fi
+
 # dry-run 时的非安装操作
 if $DRY_RUN; then
     DRY_APT="echo [dry] sudo apt install -y"
-    DRY_PIP="echo [dry] pip3 install --break-system-packages"
+    DRY_PIP="echo [dry] sudo pip3 install $pip_break"
 else
     DRY_APT="sudo apt install -y"
-    DRY_PIP="pip3 install --break-system-packages"
+    DRY_PIP="sudo pip3 install $pip_break"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -168,9 +174,12 @@ for pkg in $PYTHON_BASE; do
     if pip_installed "$module"; then
         log_ok "$pkg"
     else
-        log_warn "$pkg 未安装"
-        $DRY_PIP "$pkg"
-        log_ok "$pkg 已安装"
+        log_warn "$pkg 未安装, 正在安装..."
+        if $DRY_PIP "$pkg" 2>&1 | tail -1; then
+            pip_installed "$module" && log_ok "$pkg" || log_error "$pkg 安装后仍无法导入"
+        else
+            log_error "$pkg 安装失败"
+        fi
     fi
 done
 
@@ -179,10 +188,10 @@ if pip_installed "cups"; then
     log_ok "pycups"
 else
     log_warn "pycups 未安装"
-    $DRY_PIP pycups || {
+    $DRY_PIP pycups 2>&1 | tail -1 || {
         log_warn "pycups 编译失败, 尝试无缓存重装..."
         if ! $DRY_RUN; then
-            pip3 install --no-cache-dir --force-reinstall pycups --break-system-packages 2>/dev/null || log_error "pycups 安装失败, 请确认 libcups2-dev 已安装"
+            sudo pip3 install --no-cache-dir --force-reinstall pycups $pip_break 2>/dev/null || log_error "pycups 安装失败, 请确认 libcups2-dev 已安装"
         fi
     }
     pip_installed "cups" && log_ok "pycups 已安装" || log_error "pycups 仍未安装"
@@ -208,8 +217,8 @@ if $INSTALL_TTS; then
         log_ok "edge-tts"
     else
         log_warn "安装 edge-tts..."
-        $DRY_PIP edge-tts
-        pip_installed "edge_tts" && log_ok "edge-tts 已安装" || log_warn "edge-tts 安装失败 (非阻塞)"
+        $DRY_PIP edge-tts 2>&1 | tail -1
+        pip_installed "edge_tts" && log_ok "edge-tts" || log_warn "edge-tts 安装失败 (非阻塞)"
     fi
 
     # pygame + numpy (蜂鸣回退, 可选)
@@ -217,16 +226,20 @@ if $INSTALL_TTS; then
         log_ok "pygame"
     else
         log_warn "安装 pygame..."
-        $DRY_APT python3-pygame 2>/dev/null || $DRY_PIP pygame
-        log_ok "pygame 已安装"
+        if $DRY_APT python3-pygame 2>/dev/null; then
+            pip_installed "pygame" && log_ok "pygame" || $DRY_PIP pygame
+        else
+            $DRY_PIP pygame 2>&1 | tail -1
+        fi
+        pip_installed "pygame" && log_ok "pygame" || log_warn "pygame 安装失败 (非阻塞)"
     fi
 
     if pip_installed "numpy"; then
         log_ok "numpy"
     else
         log_warn "安装 numpy..."
-        $DRY_PIP numpy
-        log_ok "numpy 已安装"
+        $DRY_PIP numpy 2>&1 | tail -1
+        pip_installed "numpy" && log_ok "numpy" || log_warn "numpy 安装失败 (非阻塞)"
     fi
 
 else

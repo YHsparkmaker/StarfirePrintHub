@@ -46,10 +46,10 @@ if not _env_path.exists():
 
 # 1. 检查关键依赖是否可导入
 _critical_imports = {
-    "requests": "pip3 install requests --break-system-packages",
-    "dotenv": "pip3 install python-dotenv --break-system-packages",
-    "tenacity": "pip3 install tenacity --break-system-packages",
-    "cups": "sudo apt install libcups2-dev && pip3 install pycups --break-system-packages",
+    "requests": "sudo pip3 install requests --break-system-packages",
+    "dotenv": "sudo pip3 install python-dotenv --break-system-packages",
+    "tenacity": "sudo pip3 install tenacity --break-system-packages",
+    "cups": "sudo apt install libcups2-dev && sudo pip3 install pycups --break-system-packages",
 }
 for mod, fix_cmd in _critical_imports.items():
     try:
