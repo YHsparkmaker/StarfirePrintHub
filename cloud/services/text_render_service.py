@@ -166,7 +166,8 @@ class TextRenderService:
         )
 
         # 3. 包裹完整 HTML (纸张尺寸由 media 决定)
-        full_html = _build_html(media).format(body=header_html + html_body)
+        # 用 replace 而非 format, 避免用户内容中的 { } 被误解析
+        full_html = _build_html(media).replace("{body}", header_html + html_body)
 
         # 4. HTML → PDF 并保存
         output_dir = settings.UPLOAD_DIR

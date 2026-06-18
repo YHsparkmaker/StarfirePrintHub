@@ -268,6 +268,7 @@ def _run_text_extractor(
 
 def _html_to_pdf(html_body: str, media: str = "A4") -> bytes:
     """将 HTML 正文渲染为 PDF"""
-    html = _html_wrapper(media).format(body=html_body)
+    # 用 replace 而非 format, 避免文档内容中的 { } 被误解析
+    html = _html_wrapper(media).replace("{body}", html_body)
     from weasyprint import HTML
     return HTML(string=html).write_pdf()
