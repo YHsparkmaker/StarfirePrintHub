@@ -402,12 +402,12 @@ class PrinterService:
         """
         将 PDF 每一页的 MediaBox 改写为目标纸张尺寸
 
-        mm → points: 1mm = 72/25.4 pt
+        pypdf 方案:
+          1. 计算目标/当前的比例 (等比缩放)
+          2. page.scale_by(ratio) — 同步缩放内容 + MediaBox
+          3. 微调 MediaBox 到精确毫米值
 
-        Args:
-            src_path: 原始 PDF 路径
-            w_mm: 目标宽度 mm
-            h_mm: 目标高度 mm
+        mm → points: 1mm = 72/25.4 pt
 
         Returns:
             缩放后的 PDF 路径, 失败返回 None
@@ -426,28 +426,18 @@ class PrinterService:
             target_h = float(h_mm * MM_TO_PT)
 
             for page in reader.pages:
-                # 获取当前页面尺寸 (用于计算缩放比例)
-                old_box = page.mediabox
-                old_w = old_box.width
-                old_h = old_box.height
+                old_w = float(page.mediabox.width)
+                old_h = float(page.mediabox.height)
 
-                # 缩放比例 (等比缩放, 留白由 CUPS fit-to-page 处理)
-                scale = min(target_w / old_w, target_h / old_h)
-                new_w = old_w * scale
-                new_h = old_h * scale
+                # 等比缩放因子
+                ratio = min(target_w / old_w, target_h / old_h)
 
-                # 居中放置
-                x_offset = (target_w - new_w) / 2
-                y_offset = (target_h - new_h) / 2
+                # scale_by: 同时缩放内容 + MediaBox (pypdf 标准 API)
+                page.scale_by(ratio)
 
-                # 设置新 MediaBox
-                page.mediabox = RectangleObject(
-                    [0, 0, target_w, target_h]
-                )
-
-                # 缩放内容: 通过设置 content transformation 实现
-                # 先将内容缩放到新 MediaBox 中
-                page.scale_to(target_w, target_h)
+                # 微调 MediaBox 到精确目标尺寸
+                page.mediabox = RectangleObject([0, 0, target_w, target_h])
+                page.cropbox = RectangleObject([0, 0, target_w, target_h])
 
                 writer.add_page(page)
 
@@ -456,13 +446,13 @@ class PrinterService:
                 writer.write(f)
 
             logger.debug(
-                f"PDF 缩放完成: {page_count} 页, "
-                f"{w_mm}x{h_mm}mm → {out_path}"
+                f"PDF 缩放完成: {page_count} 页 → "
+                f"{w_mm}x{h_mm}mm ({target_w:.0f}x{target_h:.0f}pt) → {out_path}"
             )
             return out_path
 
         except Exception as e:
-            logger.warning(f"PDF 缩放失败 (将继续使用原文件): {e}")
+            logger.warning(f"PDF 物理缩放失败 (将继续使用原文件): {e}")
             return None
 
     # ── 获取作业状态 ──────────────────────────
