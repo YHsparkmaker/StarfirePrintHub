@@ -42,6 +42,10 @@ class Settings:
     POLL_TIMEOUT_SECONDS: int = int(os.getenv("POLL_TIMEOUT_SECONDS", "30"))
     JOB_MAX_RETRIES: int = int(os.getenv("JOB_MAX_RETRIES", "3"))
 
+    # ── 微信 JS-SDK ─────────────────────────
+    WECHAT_APP_ID: str = os.getenv("WECHAT_APP_ID", "")
+    WECHAT_APP_SECRET: str = os.getenv("WECHAT_APP_SECRET", "")
+
 
 settings = Settings()
 

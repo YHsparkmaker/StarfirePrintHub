@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import init_db
-from routers import tasks_router, nodes_router
+from routers import tasks_router, nodes_router, wechat_router
 
 # ── 日志配置 ─────────────────────────────────
 logging.basicConfig(
@@ -100,6 +100,7 @@ app.add_middleware(
 # ── 注册路由 ──────────────────────────────────
 app.include_router(tasks_router)
 app.include_router(nodes_router)
+app.include_router(wechat_router)
 
 
 # ── 健康检查 ──────────────────────────────────
