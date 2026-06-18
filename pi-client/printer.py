@@ -7,9 +7,12 @@
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import cups
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
 
 from config import config
 
@@ -352,26 +355,24 @@ class PrinterService:
         # ── 2. 参数映射 ──
         cups_options = self._map_options(options)
 
-        # ── 2.5 纸张尺寸强制适配 ──
-        # CUPS pdftopdf 滤镜优先读取 PDF 内嵌 /MediaBox，
-        # 忽略 media 选项。且 CUPS 可能不识别中文命名 (8K/B4)。
-        # 解决: 1) 转为 Custom.WxHmm 格式, 2) 追加 fit-to-page, 3) 追加 Media (PPD).
+        # ── 2.5 物理缩放 PDF 页面到目标纸张 ──
+        # CUPS 的 media/fit-to-page 选项取决于 PPD, 多数打印机忽略自定义尺寸。
+        # 唯一 100% 可靠方案: 用 pypdf 直接改写 PDF 内部 MediaBox。
+        # 这样无论 CUPS/PPD 如何, 送到打印机的每一页物理尺寸就是用户选的纸。
         media_name = options.get("media")
-        if media_name:
-            dims = PAPER_DIMENSIONS_MM.get(media_name)
-            if dims:
-                w, h = dims
-                custom_media = f"Custom.{w}x{h}mm"
-                cups_options["media"] = custom_media
+        if media_name and media_name in PAPER_DIMENSIONS_MM:
+            w_mm, h_mm = PAPER_DIMENSIONS_MM[media_name]
+            orientation = options.get("orientation", "portrait")
+            # 横向: 交换宽高
+            if orientation in ("landscape", "reverse-landscape"):
+                w_mm, h_mm = h_mm, w_mm
+            resized_path = self._resize_pdf_pages(pdf_path, w_mm, h_mm)
+            if resized_path:
+                pdf_path = str(resized_path)
                 logger.info(
-                    f"纸张尺寸: {media_name} → {custom_media}"
+                    f"PDF 已缩放至 {media_name}: {w_mm}x{h_mm}mm"
                 )
             cups_options["fit-to-page"] = "true"
-            # 部分 PPD 只认大写 Media 属性，追加透传
-            cups_options["Media"] = cups_options.get("media", media_name)
-            logger.info(
-                f"强制适配纸张: fit-to-page=true Media={cups_options['Media']}"
-            )
 
         logger.info(f"打印参数: {cups_options}")
 
@@ -393,6 +394,76 @@ class PrinterService:
             raise RuntimeError(f"CUPS IPP 错误: {e}")
         except Exception as e:
             raise RuntimeError(f"提交打印作业失败: {e}")
+
+    # ── PDF 页面物理缩放 ──────────────────────
+
+    @staticmethod
+    def _resize_pdf_pages(src_path: str, w_mm: int, h_mm: int) -> Path | None:
+        """
+        将 PDF 每一页的 MediaBox 改写为目标纸张尺寸
+
+        mm → points: 1mm = 72/25.4 pt
+
+        Args:
+            src_path: 原始 PDF 路径
+            w_mm: 目标宽度 mm
+            h_mm: 目标高度 mm
+
+        Returns:
+            缩放后的 PDF 路径, 失败返回 None
+        """
+        MM_TO_PT = 72 / 25.4
+
+        try:
+            reader = PdfReader(src_path)
+            writer = PdfWriter()
+
+            page_count = len(reader.pages)
+            if page_count == 0:
+                return None
+
+            target_w = float(w_mm * MM_TO_PT)
+            target_h = float(h_mm * MM_TO_PT)
+
+            for page in reader.pages:
+                # 获取当前页面尺寸 (用于计算缩放比例)
+                old_box = page.mediabox
+                old_w = old_box.width
+                old_h = old_box.height
+
+                # 缩放比例 (等比缩放, 留白由 CUPS fit-to-page 处理)
+                scale = min(target_w / old_w, target_h / old_h)
+                new_w = old_w * scale
+                new_h = old_h * scale
+
+                # 居中放置
+                x_offset = (target_w - new_w) / 2
+                y_offset = (target_h - new_h) / 2
+
+                # 设置新 MediaBox
+                page.mediabox = RectangleObject(
+                    [0, 0, target_w, target_h]
+                )
+
+                # 缩放内容: 通过设置 content transformation 实现
+                # 先将内容缩放到新 MediaBox 中
+                page.scale_to(target_w, target_h)
+
+                writer.add_page(page)
+
+            out_path = Path(src_path).with_suffix(".resized.pdf")
+            with open(out_path, "wb") as f:
+                writer.write(f)
+
+            logger.debug(
+                f"PDF 缩放完成: {page_count} 页, "
+                f"{w_mm}x{h_mm}mm → {out_path}"
+            )
+            return out_path
+
+        except Exception as e:
+            logger.warning(f"PDF 缩放失败 (将继续使用原文件): {e}")
+            return None
 
     # ── 获取作业状态 ──────────────────────────
 

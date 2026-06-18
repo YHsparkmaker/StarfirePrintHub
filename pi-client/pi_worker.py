@@ -50,6 +50,7 @@ _critical_imports = {
     "dotenv": "sudo pip3 install python-dotenv --break-system-packages --root-user-action=ignore",
     "tenacity": "sudo pip3 install tenacity --break-system-packages --root-user-action=ignore",
     "cups": "sudo apt install libcups2-dev && sudo pip3 install pycups --break-system-packages --root-user-action=ignore",
+    "pypdf": "sudo pip3 install pypdf --break-system-packages --root-user-action=ignore",
 }
 for mod, fix_cmd in _critical_imports.items():
     try:

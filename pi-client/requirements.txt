@@ -10,6 +10,9 @@ python-dotenv==1.0.1
 # 指数退避重试
 tenacity==9.0.0
 
+# PDF 页面缩放 (写入前将 PDF 页面物理调整为目标纸张)
+pypdf==5.1.0
+
 # ── 可选依赖 (通过 install-deps.sh --all 自动安装) ──
 # pygame==2.6.1          # TTS 蜂鸣回退 / 音频播放
 # numpy==2.2.0           # pygame 音频合成

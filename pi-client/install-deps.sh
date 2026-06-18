@@ -173,7 +173,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════
 log_title "2/5 Python 基础包"
 
-PYTHON_BASE="requests python-dotenv tenacity"
+PYTHON_BASE="requests python-dotenv tenacity pypdf"
 
 for pkg in $PYTHON_BASE; do
     module="${pkg//-/_}"
