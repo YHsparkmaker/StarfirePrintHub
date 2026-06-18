@@ -25,6 +25,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
 YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
 
 log_ok()    { echo -e "  ${GREEN}[✓]${NC} $*"; }
+log_info()  { echo -e "  ${CYAN}[i]${NC} $*"; }
 log_skip()  { echo -e "  ${YELLOW}[○]${NC} $* (跳过)"; }
 log_warn()  { echo -e "  ${YELLOW}[!]${NC} $*"; }
 log_error() { echo -e "  ${RED}[✗]${NC} $*"; }
