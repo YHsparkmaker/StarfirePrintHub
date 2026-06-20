@@ -134,6 +134,23 @@ PAPER_DIMENSIONS_MM: dict[str, tuple[int, int]] = {
     "5x7":    (127, 178),
 }
 
+# ── PWG 标准纸张名 (CUPS everywhere/IPP 驱动专用) ──
+# 现代 CUPS (2.2+) 的 -m everywhere 驱动只识别 PWG 命名,
+# 不认 "A3" / "A4" 等简称。必须用 iso_a3_297x420mm 这样的全名。
+PAPER_PWG_NAMES: dict[str, str] = {
+    "A4":     "iso_a4_210x297mm",
+    "A3":     "iso_a3_297x420mm",
+    "A5":     "iso_a5_148x210mm",
+    "B4":     "iso_b4_250x353mm",
+    "B5":     "iso_b5_176x250mm",
+    "Letter": "na_letter_8.5x11in",
+    "Legal":  "na_legal_8.5x14in",
+    # 8K 是中国非标尺寸, 用自定义名
+    "8K":     "custom_8k_270x390mm",
+    "4x6":    "na_index-4x6_4x6in",
+    "5x7":    "na_5x7_5x7in",
+}
+
 
 class PrinterService:
     """
@@ -372,7 +389,23 @@ class PrinterService:
                 logger.info(
                     f"PDF 已缩放至 {media_name}: {w_mm}x{h_mm}mm"
                 )
-            cups_options["fit-to-page"] = "true"
+
+            # ── 关键: 让 CUPS 也按目标纸张选纸盒 ──
+            # 现代 CUPS everywhere/IPP 驱动只认 PWG 标准名 (iso_a3_297x420mm),
+            # 不认 "A3" / "A4" 简称, 否则会回退到默认 A4。
+            # 我们用 _detect_supported_media() 探测打印机实际支持的命名:
+            #   - 如果支持 PWG 名 → 用 iso_a3_297x420mm
+            #   - 如果支持简称   → 用 A3
+            #   - 都不支持      → 用 Custom.297x420mm (CUPS 通用自定义)
+            cups_media_value = self._resolve_media_value(media_name, w_mm, h_mm)
+            if cups_media_value:
+                cups_options["media"] = cups_media_value
+                logger.info(f"CUPS media 选项: {cups_media_value}")
+
+            # 不再加 fit-to-page=true:
+            # PDF 已被物理改写为目标尺寸, 再叠加 fit-to-page 反而会
+            # 让打印机按默认纸张 (通常 A4) 二次缩放, 导致 A3→A4 退化。
+            cups_options.pop("fit-to-page", None)
 
         logger.info(f"打印参数: {cups_options}")
 
@@ -396,6 +429,83 @@ class PrinterService:
             raise RuntimeError(f"提交打印作业失败: {e}")
 
     # ── PDF 页面物理缩放 ──────────────────────
+
+    def _resolve_media_value(self, media_name: str, w_mm: int, h_mm: int) -> str:
+        """
+        探测打印机实际支持的纸张命名, 返回最佳的 CUPS media 值
+
+        优先级:
+          1. PWG 标准名 (iso_a3_297x420mm) — 现代 CUPS everywhere 驱动
+          2. 简称 (A3) — 老 CUPS / 部分 PPD 驱动
+          3. Custom 自定义 (Custom.297x420mm) — 通用回退
+
+        缓存探测结果, 避免每次打印都查询 CUPS。
+        """
+        # 缓存命中: 用上次探测的命名风格
+        cache = getattr(self, "_media_style_cache", None)
+        if cache is not None:
+            style = cache
+        else:
+            style = self._detect_media_style()
+            self._media_style_cache = style
+
+        if style == "pwg":
+            pwg_name = PAPER_PWG_NAMES.get(media_name)
+            if pwg_name:
+                return pwg_name
+            # 没有预定义的 PWG 名 → 用 custom
+            return f"custom_{media_name.lower()}_{w_mm}x{h_mm}mm"
+
+        if style == "short":
+            # 老 PPD 驱动直接用 A3 / A4 简称即可
+            return media_name
+
+        # 都不行 → CUPS 通用 Custom.WxHmm 格式
+        return f"Custom.{w_mm}x{h_mm}mm"
+
+    def _detect_media_style(self) -> str:
+        """
+        探测打印机支持的 media 命名风格
+
+        Returns:
+            "pwg"   — 支持 PWG 标准名 (iso_a3_297x420mm)
+            "short" — 支持简称 (A3)
+            "custom" — 都不支持, 用 Custom.WxHmm 回退
+        """
+        if self.conn is None:
+            return "custom"
+
+        try:
+            attrs = self.conn.getPrinterAttributes(self.printer_name)
+        except Exception as e:
+            logger.debug(f"获取打印机属性失败: {e}")
+            return "custom"
+
+        # CUPS 暴露的支持纸张列表通常在这两个 key 之一:
+        #   media-supported          — 标准 IPP 属性
+        #   PageSize                 — PPD 风格
+        supported = attrs.get("media-supported") or attrs.get("PageSize") or []
+        if not isinstance(supported, list):
+            supported = [supported]
+
+        supported_lower = {str(s).lower() for s in supported}
+
+        # 有任何 iso_*/na_* 形式 → PWG 风格
+        if any(s.startswith(("iso_", "na_", "om_", "asme_", "roc_")) for s in supported_lower):
+            logger.info(f"打印机支持 PWG 命名 (共 {len(supported)} 种纸张)")
+            return "pwg"
+
+        # 有 A3/A4/Letter 简称 → short 风格
+        if any(s in supported_lower for s in ("a3", "a4", "letter", "legal")):
+            logger.info(f"打印机支持简称命名")
+            return "short"
+
+        logger.warning(
+            f"打印机未暴露纸张列表, 使用 Custom 自定义尺寸 (supported={list(supported)[:5]})"
+        )
+        return "custom"
+
+    # ── PDF 页面物理缩放 (helper) ─────────────
 
     @staticmethod
     def _resize_pdf_pages(src_path: str, w_mm: int, h_mm: int) -> Path | None:
