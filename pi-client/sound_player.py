@@ -48,6 +48,48 @@ class SoundPlayer:
 
         self._tts_backend = self._detect_tts()
         self._fallback = self._detect_audio()
+        self._log_diagnosis()
+
+    # ═══════════════════════════════════════════════════════════════
+    # 启动诊断 — 暴露问题, 不要静默
+    # ═══════════════════════════════════════════════════════════════
+
+    def _log_diagnosis(self):
+        """启动时打印一次完整诊断, 便于排查 systemd 下无声问题"""
+        if not self._enabled:
+            logger.info("🔇 TTS 已禁用 (ENABLE_SOUND=false), 跳过诊断")
+            return
+
+        logger.info(f"🔊 TTS 诊断:")
+        logger.info(f"   TTS 后端:    {self._tts_backend}")
+        logger.info(f"   音频后端:    {self._fallback}")
+        logger.info(f"   音量:        {self._volume}")
+        logger.info(f"   成功文本:    {self._tts_success}")
+        logger.info(f"   失败文本:    {self._tts_failure}")
+
+        if self._tts_backend == "none":
+            logger.warning(
+                "⚠️ 没有找到任何 TTS 后端! 安装命令:\n"
+                "     sudo apt install -y espeak-ng                  # 离线, 推荐\n"
+                "     pip3 install edge-tts --break-system-packages  # 在线高质量"
+            )
+        if self._fallback == "none":
+            logger.warning(
+                "⚠️ 没有找到音频播放后端! 安装命令:\n"
+                "     sudo apt install -y alsa-utils                 # 提供 aplay\n"
+                "     pip3 install pygame --break-system-packages    # 跨平台备选"
+            )
+
+        # systemd 环境检查: User=root + 缺 XDG_RUNTIME_DIR 是无声第一原因
+        import os
+        if os.getuid() == 0 and not os.environ.get("XDG_RUNTIME_DIR"):
+            logger.warning(
+                "⚠️ 检测到 root 用户且无 XDG_RUNTIME_DIR, "
+                "PulseAudio 可能无法访问。建议:\n"
+                "     1) 修改 service: User=pi (而非 root)\n"
+                "     2) 或在 service 加: Environment=XDG_RUNTIME_DIR=/run/user/1000\n"
+                "     3) 或用 ALSA 直出 (espeak 默认走 ALSA, 应该可用)"
+            )
 
     # ═══════════════════════════════════════════════════════════════
     # 公开 API
@@ -64,22 +106,32 @@ class SoundPlayer:
     def play_success(self):
         """播报打印成功"""
         if not self._enabled:
+            logger.debug("TTS 已禁用 (ENABLE_SOUND=false)")
             return
         try:
             self._speak(self._tts_success)
+            logger.info(f"🔊 已播报: {self._tts_success}")
         except Exception as e:
-            logger.debug(f"TTS 成功播报异常: {e}")
-            self._play_beep_success()
+            logger.warning(f"⚠️ TTS 成功播报失败: {type(e).__name__}: {e} → 回退蜂鸣")
+            try:
+                self._play_beep_success()
+            except Exception as e2:
+                logger.error(f"❌ 蜂鸣回退也失败: {type(e2).__name__}: {e2}")
 
     def play_error(self):
         """播报打印失败"""
         if not self._enabled:
+            logger.debug("TTS 已禁用 (ENABLE_SOUND=false)")
             return
         try:
             self._speak(self._tts_failure)
+            logger.info(f"🔊 已播报: {self._tts_failure}")
         except Exception as e:
-            logger.debug(f"TTS 失败播报异常: {e}")
-            self._play_beep_error()
+            logger.warning(f"⚠️ TTS 失败播报失败: {type(e).__name__}: {e} → 回退蜂鸣")
+            try:
+                self._play_beep_error()
+            except Exception as e2:
+                logger.error(f"❌ 蜂鸣回退也失败: {type(e2).__name__}: {e2}")
 
     def speak(self, text: str):
         """播报任意文本 (调试用)"""
@@ -160,7 +212,8 @@ class SoundPlayer:
         binary = shutil.which("espeak-ng") or shutil.which("espeak") or "espeak"
         speed = int(100 + (1 - self._volume) * 80)  # 音量映射到语速辅助
 
-        subprocess.run(
+        # 捕获 stderr, 方便排查 ALSA / PulseAudio 错误
+        result = subprocess.run(
             [
                 binary,
                 "-v", "zh",           # 中文普通话
@@ -169,9 +222,17 @@ class SoundPlayer:
                 text,
             ],
             timeout=15,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
+
+        if result.returncode != 0:
+            err = (result.stderr or "").strip() or "espeak 静默失败"
+            raise RuntimeError(f"espeak 退出码 {result.returncode}: {err}")
+        # 即使返回 0, stderr 里也可能有 ALSA underrun 警告, 帮助诊断
+        if result.stderr and result.stderr.strip():
+            logger.debug(f"espeak stderr: {result.stderr.strip()}")
 
     # ── edge-tts (在线, 高质量) ────────────────
 

@@ -354,6 +354,13 @@ class PiWorker:
         # ── 启动心跳线程 ──
         self.heartbeat.start()
 
+        # ── TTS 自检: 启动时播报 "服务已启动" 以便确认音频可用 ──
+        # 失败不影响主流程, 只是在日志里留下完整异常栈
+        try:
+            self.sound.speak("服务已启动")
+        except Exception as e:
+            logger.warning(f"⚠️ TTS 自检失败: {type(e).__name__}: {e}")
+
         # ── 自动注册 (幂等) ──
         self._ensure_registered()
 
