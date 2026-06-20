@@ -47,7 +47,6 @@ AUTO_YES=false
 ARG_NAME=""
 ARG_PRINTER=""
 ARG_CLOUD=""
-ARG_MEDIA="A4"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,10 +70,6 @@ while [[ $# -gt 0 ]]; do
             ARG_CLOUD="$2"
             shift 2
             ;;
-        --media)
-            ARG_MEDIA="$2"
-            shift 2
-            ;;
         --help|-h)
             echo "用法: $0 [选项]"
             echo ""
@@ -84,7 +79,6 @@ while [[ $# -gt 0 ]]; do
             echo "  --name NAME         节点名称, 如 '3楼A区打印机'"
             echo "  --printer NAME      CUPS 打印机队列名, 如 'Fuji_Xerox_SC2020'"
             echo "  --cloud URL         云端 API 地址, 如 'http://192.168.1.100:8000'"
-            echo "  --media SIZE        默认纸张尺寸, 默认 A4"
             echo "  --help, -h          显示此帮助"
             echo ""
             echo "示例:"
@@ -230,8 +224,6 @@ fi
 NODE_NAME=$(get_value "$ARG_NAME" "${NODE_NAME:-}" "节点名称 (如: 3楼A区打印机)")
 PRINTER_NAME=$(get_value "$ARG_PRINTER" "${PRINTER_NAME:-Fuji_Xerox_SC2020}" "CUPS 打印机队列名")
 CLOUD_URL=$(get_value "$ARG_CLOUD" "${CLOUD_BASE_URL:-http://192.168.1.100:8000}" "云端 API 地址")
-MEDIA=$(get_value "$ARG_MEDIA" "A4" "默认纸张尺寸 [A4]")
-MEDIA=${MEDIA:-A4}
 
 # 去除尾部斜杠
 CLOUD_URL="${CLOUD_URL%/}"
@@ -242,7 +234,6 @@ log_info "  节点名称:    $NODE_NAME"
 log_info "  打印机:      $PRINTER_NAME"
 log_info "  云端地址:    $CLOUD_URL"
 log_info "  MAC 地址:    $MAC_ADDRESS"
-log_info "  默认纸张:    $MEDIA"
 log_info "──────────────────────────────────────────"
 echo ""
 
@@ -261,7 +252,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 
 REGISTER_URL="$CLOUD_URL/api/nodes/register"
-QUERY_STRING="node_id=$NODE_ID&name=$NODE_NAME&mac_address=$MAC_ADDRESS&printer_name=$PRINTER_NAME&supported_media=$MEDIA"
+QUERY_STRING="node_id=$NODE_ID&name=$NODE_NAME&mac_address=$MAC_ADDRESS&printer_name=$PRINTER_NAME"
 FULL_URL="$REGISTER_URL?$QUERY_STRING"
 
 log_step "正在注册到云端..."
@@ -276,8 +267,7 @@ urlencode() {
 
 ENCODED_NAME=$(urlencode "$NODE_NAME")
 ENCODED_PRINTER=$(urlencode "$PRINTER_NAME")
-ENCODED_MEDIA=$(urlencode "$MEDIA")
-QUERY_STRING="node_id=${NODE_ID}&name=${ENCODED_NAME}&mac_address=${MAC_ADDRESS}&printer_name=${ENCODED_PRINTER}&supported_media=${ENCODED_MEDIA}"
+QUERY_STRING="node_id=${NODE_ID}&name=${ENCODED_NAME}&mac_address=${MAC_ADDRESS}&printer_name=${ENCODED_PRINTER}"
 FULL_URL="$REGISTER_URL?$QUERY_STRING"
 
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$FULL_URL" \

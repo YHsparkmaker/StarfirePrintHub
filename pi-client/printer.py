@@ -393,7 +393,7 @@ class PrinterService:
             # ── 关键: 让 CUPS 也按目标纸张选纸盒 ──
             # 现代 CUPS everywhere/IPP 驱动只认 PWG 标准名 (iso_a3_297x420mm),
             # 不认 "A3" / "A4" 简称, 否则会回退到默认 A4。
-            # 我们用 _detect_supported_media() 探测打印机实际支持的命名:
+            # 我们用 _detect_media_style() 探测打印机实际支持的命名:
             #   - 如果支持 PWG 名 → 用 iso_a3_297x420mm
             #   - 如果支持简称   → 用 A3
             #   - 都不支持      → 用 Custom.297x420mm (CUPS 通用自定义)

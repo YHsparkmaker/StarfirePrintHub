@@ -43,10 +43,6 @@ class PrintNode(Base):
         String(256), nullable=True,
         comment="CUPS 打印机名称"
     )
-    supported_media: Mapped[str] = mapped_column(
-        String(256), nullable=True, default="A4",
-        comment="支持的纸张尺寸, 逗号分隔"
-    )
 
     # ── 时间戳 ────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(

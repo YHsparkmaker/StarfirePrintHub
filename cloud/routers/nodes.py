@@ -23,7 +23,6 @@ async def register_node(
     name: str = "",
     mac_address: str = "",
     printer_name: str = "",
-    supported_media: str = "A4",
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -43,7 +42,6 @@ async def register_node(
         node.name = name or node.name
         node.mac_address = mac_address or node.mac_address
         node.printer_name = printer_name or node.printer_name
-        node.supported_media = supported_media
         logger.info(f"节点已存在，更新信息: {node_id}")
     else:
         # 新节点
@@ -52,7 +50,6 @@ async def register_node(
             name=name,
             mac_address=mac_address,
             printer_name=printer_name,
-            supported_media=supported_media,
         )
         db.add(node)
         logger.info(f"新节点注册: {node_id} ({name})")
@@ -111,7 +108,6 @@ async def list_nodes(
             "name": n.name,
             "is_online": n.is_online,
             "printer_name": n.printer_name,
-            "supported_media": n.supported_media,
             "last_heartbeat": n.last_heartbeat.isoformat() if n.last_heartbeat else None,
             "pending_command": n.pending_command,
             "command_result": n.command_result,
