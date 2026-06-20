@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import init_db
 from routers import tasks_router, nodes_router, wechat_router
+from _version import __version__
 
 # ── 日志配置 ─────────────────────────────────
 logging.basicConfig(
@@ -84,7 +85,7 @@ app = FastAPI(
   │  查询任务结果                 │                              │
 ```
     """,
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -110,7 +111,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "starfire-print-hub",
-        "version": "0.1.0",
+        "version": __version__,
     }
 
 

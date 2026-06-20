@@ -28,6 +28,8 @@ from pathlib import Path
 
 import requests
 
+from _version import __version__
+
 logger = logging.getLogger(__name__)
 
 # ── 仓库路径 (git pull 的目标) ──
@@ -42,7 +44,7 @@ class OTAManager:
         self.base_url = base_url.rstrip("/")
         self.node_id = node_id
         self.session = requests.Session()
-        self.session.headers["User-Agent"] = "StarfirePrintHub-OTA/1.0"
+        self.session.headers["User-Agent"] = f"StarfirePrintHub-OTA/{__version__}"
 
         # SSH 隧道状态
         self._tunnel_proc: subprocess.Popen | None = None

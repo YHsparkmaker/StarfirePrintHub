@@ -85,6 +85,7 @@ from printer import PrinterService
 from heartbeat import HeartbeatReporter
 from sound_player import get_sound_player
 from ota import OTAManager
+from _version import __version__
 
 # ── 日志 ──────────────────────────────────────
 logging.basicConfig(
@@ -333,7 +334,7 @@ class PiWorker:
           4. sleep 后继续
         """
         logger.info("═" * 60)
-        logger.info("🖨️  星火智造云打印 — Pi Worker 启动")
+        logger.info(f"🖨️  星火智造云打印 — Pi Worker 启动 (v{__version__})")
         logger.info(f"   云端地址: {config.CLOUD_BASE_URL}")
         logger.info(f"   节点 ID:  {config.NODE_ID}")
         logger.info(f"   打印机:   {config.PRINTER_NAME}")
