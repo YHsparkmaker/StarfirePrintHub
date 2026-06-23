@@ -759,6 +759,93 @@ $$
       </Transition>
 
       <!-- ═══════════════════════════════════════════════
+           任务队列
+           ═══════════════════════════════════════════════ -->
+      <div class="mt-8 border-t border-gray-800 pt-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-[10px] uppercase tracking-[0.3em] text-gray-500">
+            任务队列
+            <span v-if="queueTotal" class="ml-1 text-cyan/60">({{ queueTotal }})</span>
+          </h2>
+          <button
+            :disabled="queueLoading"
+            class="text-[10px] text-cyan/50 hover:text-cyan transition-colors disabled:opacity-30"
+            @click="refreshQueue"
+          >
+            {{ queueLoading ? '刷新中...' : '[ 刷新 ]' }}
+          </button>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="!queueLoading && queueJobs.length === 0" class="text-center py-6">
+          <p class="text-[10px] text-gray-600">暂无打印任务</p>
+          <p class="mt-1 text-[9px] text-gray-700">提交打印后任务会出现在这里</p>
+        </div>
+
+        <!-- 加载 -->
+        <div v-if="queueLoading && queueJobs.length === 0" class="flex justify-center py-6">
+          <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan/20 border-t-cyan" />
+        </div>
+
+        <!-- 任务列表 -->
+        <div v-if="queueJobs.length" class="space-y-1.5">
+          <div
+            v-for="job in queueJobs"
+            :key="job.id"
+            class="cyber-panel px-3 py-2 flex items-center gap-3 text-[10px]"
+          >
+            <!-- 状态指示灯 -->
+            <span
+              class="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full"
+              :class="{
+                'bg-amber-400/80 animate-pulse': job.status === 'pending',
+                'bg-cyan-400 animate-pulse': job.status === 'printing',
+                'bg-green-400': job.status === 'completed',
+                'bg-red-400': job.status === 'failed',
+                'bg-gray-600': !['pending','printing','completed','failed'].includes(job.status),
+              }"
+            />
+            <!-- 文件信息 -->
+            <div class="flex-1 min-w-0">
+              <p class="truncate text-gray-300">{{ job.file_name || '未命名任务' }}</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">
+                {{ formatQueueTime(job.created_at) }}
+                <span v-if="job.cups_options?.media" class="ml-2">| {{ job.cups_options.media }}</span>
+                <span v-if="job.cups_options?.copies > 1" class="ml-1">×{{ job.cups_options.copies }}</span>
+              </p>
+              <!-- 失败原因 -->
+              <p v-if="job.status === 'failed' && job.error_msg" class="text-[9px] text-red-400/60 mt-0.5 truncate">
+                {{ job.error_msg }}
+              </p>
+            </div>
+            <!-- 状态标签 -->
+            <span
+              class="shrink-0 rounded px-1.5 py-0.5 text-[8px] uppercase tracking-wider"
+              :class="{
+                'bg-amber-400/10 text-amber-400/80': job.status === 'pending',
+                'bg-cyan-400/10 text-cyan-400/80': job.status === 'printing',
+                'bg-green-400/10 text-green-400/80': job.status === 'completed',
+                'bg-red-400/10 text-red-400/80': job.status === 'failed',
+                'bg-gray-700/50 text-gray-500': !['pending','printing','completed','failed'].includes(job.status),
+              }"
+            >
+              {{ STATUS_LABELS[job.status] || job.status }}
+            </span>
+          </div>
+
+          <!-- 加载更多 -->
+          <button
+            v-if="queueJobs.length < queueTotal"
+            :disabled="queueLoading"
+            class="w-full py-2 text-[9px] text-gray-500 hover:text-cyan/60 transition-colors disabled:opacity-30"
+            @click="loadMoreQueue"
+          >
+            {{ queueLoading ? '加载中...' : '[ 加载更多 ]' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════
            底部装饰
            ═══════════════════════════════════════════════ -->
       <footer class="mt-12 text-center">
@@ -786,7 +873,7 @@ $$
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { uploadPrintJob, uploadText, previewFile, previewText, extractText, getJobStatus } from '@/composables/useApi'
+import { uploadPrintJob, uploadText, previewFile, previewText, extractText, getJobStatus, listJobs } from '@/composables/useApi'
 import { isWechat, initWechat, chooseWechatImage } from '@/composables/useWechat'
 import PrintPreview from '@/components/PrintPreview.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
@@ -877,6 +964,60 @@ const jobResult = ref(null)    // null → 等待中 | 'completed' → 成功 | 
 const jobErrorMsg = ref('')    // 失败原因
 let jobPollTimer = null
 const errorMessage = ref('')
+
+// ── 任务队列 ──
+const STATUS_LABELS = {
+  pending: '等待中',
+  printing: '打印中',
+  completed: '已完成',
+  failed: '失败',
+}
+const QUEUE_PAGE_SIZE = 50
+const queueJobs = ref([])
+const queueTotal = ref(0)
+const queueLoading = ref(false)
+let queueRefreshTimer = null
+
+function formatQueueTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMin = Math.floor((now - d) / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin} 分钟前`
+  if (diffMin < 1440) return `${Math.floor(diffMin / 60)} 小时前`
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+    + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+async function refreshQueue() {
+  if (queueLoading.value) return
+  queueLoading.value = true
+  try {
+    const data = await listJobs(nodeId.value, QUEUE_PAGE_SIZE, 0)
+    queueJobs.value = data
+    // API 不直接返回 total, 用返回数量估算
+    queueTotal.value = data.length
+  } catch (err) {
+    // 静默, 不影响主流程
+  } finally {
+    queueLoading.value = false
+  }
+}
+
+async function loadMoreQueue() {
+  if (queueLoading.value) return
+  queueLoading.value = true
+  try {
+    const data = await listJobs(nodeId.value, QUEUE_PAGE_SIZE, queueJobs.value.length)
+    queueJobs.value.push(...data)
+    queueTotal.value = queueJobs.value.length
+  } catch (err) {
+    // 静默
+  } finally {
+    queueLoading.value = false
+  }
+}
 
 // 使用信息 (页首)
 const headerInfo = reactive({
@@ -1027,6 +1168,9 @@ onMounted(async () => {
       // 静默, 不影响正常使用
     }
   }
+  // 首次加载任务队列 + 定时自动刷新
+  refreshQueue()
+  queueRefreshTimer = setInterval(refreshQueue, 15000)  // 每 15 秒
 })
 
 async function handleWechatPick() {
@@ -1205,6 +1349,9 @@ async function handleSubmit() {
     // ── 轮询任务最终状态 ──
     startJobPolling(submittedJobId.value)
 
+    // ── 刷新队列 ──
+    refreshQueue()
+
   } catch (err) {
     stopSubmitAnimation()
     isSubmitting.value = false
@@ -1343,6 +1490,7 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
   stopSubmitAnimation()
   stopJobPolling()
+  if (queueRefreshTimer) clearInterval(queueRefreshTimer)
 })
 </script>
 
