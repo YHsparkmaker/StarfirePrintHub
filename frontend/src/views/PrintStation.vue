@@ -446,6 +446,31 @@ $$
             </div>
           </div>
 
+          <!-- ── 彩色/黑白 ── -->
+          <div class="flex items-center justify-between px-5 py-4">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-gray-400">颜色模式</span>
+              <p class="mt-0.5 text-[10px] text-gray-600">
+                {{ colorModeLabel }}
+              </p>
+            </div>
+            <div class="flex gap-1 rounded-md bg-cyber-mid p-0.5">
+              <button
+                v-for="mode in colorModes"
+                :key="mode.value"
+                :class="[
+                  'px-3 py-1.5 text-xs rounded-sm transition-all duration-200',
+                  printOptions.color_mode === mode.value
+                    ? 'bg-neon/10 text-neon shadow-[0_0_8px_rgba(57,255,20,0.1)]'
+                    : 'text-gray-500 hover:text-gray-300',
+                ]"
+                @click="printOptions.color_mode = mode.value"
+              >
+                {{ mode.label }}
+              </button>
+            </div>
+          </div>
+
           <!-- ── AI 智能摘要 (Toggle) ── -->
           <div class="flex items-center justify-between px-5 py-4">
             <div>
@@ -812,6 +837,7 @@ $$
                 {{ formatQueueTime(job.created_at) }}
                 <span v-if="job.cups_options?.media" class="ml-2">| {{ job.cups_options.media }}</span>
                 <span v-if="job.cups_options?.copies > 1" class="ml-1">×{{ job.cups_options.copies }}</span>
+                <span v-if="job.cups_options?.color_mode === 'monochrome'" class="ml-1 text-gray-500">| 黑白</span>
               </p>
               <!-- 失败原因 -->
               <p v-if="job.status === 'failed' && job.error_msg" class="text-[9px] text-red-400/60 mt-0.5 truncate">
@@ -943,13 +969,25 @@ const wxLoading = ref(false)
 
 // 打印参数
 const printOptions = reactive({
-  media: 'A4',        // 纸张大小
-  number_up: 1,        // 拼版 (1/2/4)
-  sides: 'one-sided',  // 单双面
+  media: 'A4',            // 纸张大小
+  number_up: 1,           // 拼版 (1/2/4)
+  sides: 'one-sided',     // 单双面
   orientation: 'portrait', // 方向
-  copies: 1,           // 份数
-  media_source: 'auto', // 纸盒
+  copies: 1,              // 份数
+  media_source: 'auto',   // 纸盒
   media_type: 'stationery', // 纸张类型
+  color_mode: 'color',    // 彩色/黑白/自动 (auto=由打印机判断)
+})
+
+// ── 颜色模式选项 ──
+const colorModes = [
+  { value: 'color',     label: '彩色' },
+  { value: 'monochrome', label: '黑白' },
+]
+
+const colorModeLabel = computed(() => {
+  const m = colorModes.find(c => c.value === printOptions.color_mode)
+  return m ? m.label : '彩色'
 })
 
 // AI 摘要
@@ -1248,6 +1286,7 @@ async function handlePreview() {
       copies: printOptions.copies,
       media_source: printOptions.media_source,
       media_type: printOptions.media_type,
+      color_mode: printOptions.color_mode,
       header_info: buildHeaderInfo(),
     }
 
@@ -1309,6 +1348,7 @@ async function handleSubmit() {
       copies: printOptions.copies,
       media_source: printOptions.media_source,
       media_type: printOptions.media_type,
+      color_mode: printOptions.color_mode,
       header_info: buildHeaderInfo(),
     }
 
@@ -1465,6 +1505,7 @@ function resetForm() {
   printOptions.number_up = 1
   printOptions.sides = 'one-sided'
   printOptions.copies = 1
+  printOptions.color_mode = 'color'
   aiSummary.value = false
 }
 
