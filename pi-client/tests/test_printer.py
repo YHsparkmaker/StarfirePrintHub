@@ -315,3 +315,146 @@ def test_submit_job_maps_options_before_submit(printer):
     _, _, _, cups_opts = printer.conn.printFile.call_args[0]
     assert cups_opts["number-up"] == "4"
     assert cups_opts["sides"] == "two-sided-long-edge"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 纸张尺寸下发 — PageSize / media 双通道
+# ═══════════════════════════════════════════════════════════════════
+
+@pytest.fixture
+def printer_with_short_style(printer, tmp_path):
+    """模拟支持简称 (A3/A4) 的 PPD 驱动打印机, 并 stub PDF 缩放"""
+    printer.conn.getPrinters.return_value = {
+        printer.printer_name: {"printer-state": 3, "printer-state-reasons": []}
+    }
+    printer.conn.getPrinterAttributes.return_value = {
+        "media-supported": ["A3", "A4", "Letter", "8K"],
+    }
+    printer.conn.printFile.return_value = 99
+    # 跳过真实的 PDF 改写, 让单测不依赖文件系统
+    printer._resize_pdf_pages = MagicMock(return_value=None)
+    return printer
+
+
+@pytest.fixture
+def printer_with_pwg_style(printer):
+    """模拟仅支持 PWG 名 (iso_a3_*) 的 IPP-everywhere 打印机"""
+    printer.conn.getPrinters.return_value = {
+        printer.printer_name: {"printer-state": 3, "printer-state-reasons": []}
+    }
+    printer.conn.getPrinterAttributes.return_value = {
+        "media-supported": ["iso_a3_297x420mm", "iso_a4_210x297mm"],
+    }
+    printer.conn.printFile.return_value = 100
+    printer._resize_pdf_pages = MagicMock(return_value=None)
+    return printer
+
+
+def test_submit_job_a3_sets_both_pagesize_and_media(printer_with_short_style):
+    """A3 下发必须同时设置 PageSize=A3 和 media=A3 — PPD 驱动只看 PageSize"""
+    p = printer_with_short_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "A3", "copies": 1},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    # ── 核心断言: 必须有 PageSize 才能让 PPD 驱动选 A3 纸盒 ──
+    assert cups_opts.get("PageSize") == "A3", \
+        "缺失 PageSize → PPD 驱动会回退到默认 A4, 这正是 A3 被识别成 A4 的根因"
+    assert cups_opts.get("media") == "A3"
+
+
+def test_submit_job_8k_sets_pagesize(printer_with_short_style):
+    """8K 是中国非标尺寸, 必须下发 PageSize=8K, 否则也会退化成 A4"""
+    p = printer_with_short_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "8K", "copies": 1},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    assert cups_opts.get("PageSize") == "8K"
+    assert cups_opts.get("media") == "8K"
+
+
+def test_submit_job_a4_default_still_sets_pagesize(printer_with_short_style):
+    """A4 也应明确下发 PageSize, 而非依赖打印机默认"""
+    p = printer_with_short_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "A4"},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    assert cups_opts.get("PageSize") == "A4"
+    assert cups_opts.get("media") == "A4"
+
+
+def test_submit_job_pwg_only_uses_pwg_name_for_media(printer_with_pwg_style):
+    """仅支持 PWG 名的现代打印机: media 用 iso_a3_*, PageSize 仍用简称"""
+    p = printer_with_pwg_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "A3"},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    # media 走 PWG 路径
+    assert cups_opts.get("media") == "iso_a3_297x420mm"
+    # PageSize 始终是 PPD 风格简称
+    assert cups_opts.get("PageSize") == "A3"
+
+
+def test_submit_job_pwg_8k_falls_back_to_custom(printer_with_pwg_style):
+    """8K 没有官方 PWG 名 → media 用 Custom.WxHmm 兜底"""
+    p = printer_with_pwg_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "8K"},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    assert cups_opts.get("media") == "Custom.270x390mm"
+    assert cups_opts.get("PageSize") == "8K"
+
+
+def test_submit_job_does_not_send_fit_to_page(printer_with_short_style):
+    """fit-to-page 必须被移除 — PDF 已物理缩放过, 再叠加会导致二次缩印"""
+    p = printer_with_short_style
+    p.submit_job(
+        pdf_path="/tmp/doc.pdf",
+        job_name="job",
+        options={"media": "A3", "_raw_options": {"fit-to-page": "true"}},
+    )
+    _, _, _, cups_opts = p.conn.printFile.call_args[0]
+    assert "fit-to-page" not in cups_opts
+
+
+def test_detect_media_style_short_preferred_when_both_supported(printer):
+    """同时暴露 PWG 与简称 → 优先选 short (兼容 PPD)"""
+    printer.conn.getPrinterAttributes.return_value = {
+        "media-supported": ["A3", "A4", "iso_a3_297x420mm", "iso_a4_210x297mm"],
+    }
+    assert printer._detect_media_style() == "short"
+
+
+def test_detect_media_style_pwg_only(printer):
+    printer.conn.getPrinterAttributes.return_value = {
+        "media-supported": ["iso_a3_297x420mm", "iso_a4_210x297mm"],
+    }
+    assert printer._detect_media_style() == "pwg"
+
+
+def test_detect_media_style_no_attrs(printer):
+    """打印机不暴露 media-supported → custom 兜底"""
+    printer.conn.getPrinterAttributes.return_value = {}
+    assert printer._detect_media_style() == "custom"
+
+
+def test_resolve_page_size_returns_short_name(printer):
+    """PageSize 永远用简称, 不用 PWG"""
+    # 即使 style 是 pwg, PageSize 也是简称
+    printer._media_style_cache = "pwg"
+    assert printer._resolve_page_size_value("A3", 297, 420) == "A3"
+    assert printer._resolve_page_size_value("8K", 270, 390) == "8K"

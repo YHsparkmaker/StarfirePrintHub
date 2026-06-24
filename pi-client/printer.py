@@ -145,8 +145,8 @@ PAPER_PWG_NAMES: dict[str, str] = {
     "B5":     "iso_b5_176x250mm",
     "Letter": "na_letter_8.5x11in",
     "Legal":  "na_legal_8.5x14in",
-    # 8K 是中国非标尺寸, 用自定义名
-    "8K":     "custom_8k_270x390mm",
+    # 8K 是中国非标尺寸, 没有官方 PWG 名 → 留空, 由调用方走 Custom 回退
+    "8K":     "",
     "4x6":    "na_index-4x6_4x6in",
     "5x7":    "na_5x7_5x7in",
 }
@@ -391,16 +391,23 @@ class PrinterService:
                 )
 
             # ── 关键: 让 CUPS 也按目标纸张选纸盒 ──
-            # 现代 CUPS everywhere/IPP 驱动只认 PWG 标准名 (iso_a3_297x420mm),
-            # 不认 "A3" / "A4" 简称, 否则会回退到默认 A4。
-            # 我们用 _detect_media_style() 探测打印机实际支持的命名:
-            #   - 如果支持 PWG 名 → 用 iso_a3_297x420mm
-            #   - 如果支持简称   → 用 A3
-            #   - 都不支持      → 用 Custom.297x420mm (CUPS 通用自定义)
+            # 不同打印机驱动认不同的选项, 我们"全都给":
+            #   1. media       — IPP/CUPS everywhere 驱动 (现代 ipp-everywhere)
+            #   2. PageSize    — 老 PPD 驱动 (大多数办公打印机如富士施乐 SC2020)
+            #   3. media-col   — 自定义尺寸场景的备用通道
+            #
+            # 真正的关键是 PageSize: 现实中绝大多数打印机仍由 PPD 驱动,
+            # 只看 PageSize, 完全忽略 media 字段。如果 PageSize 没设置,
+            # 就会按 PPD 默认值 (通常 A4) 工作 — 这正是用户报告的现象。
             cups_media_value = self._resolve_media_value(media_name, w_mm, h_mm)
+            page_size_value = self._resolve_page_size_value(media_name, w_mm, h_mm)
             if cups_media_value:
                 cups_options["media"] = cups_media_value
-                logger.info(f"CUPS media 选项: {cups_media_value}")
+            if page_size_value:
+                cups_options["PageSize"] = page_size_value
+            logger.info(
+                f"CUPS 纸张选项: media={cups_media_value}, PageSize={page_size_value}"
+            )
 
             # 不再加 fit-to-page=true:
             # PDF 已被物理改写为目标尺寸, 再叠加 fit-to-page 反而会
@@ -453,8 +460,10 @@ class PrinterService:
             pwg_name = PAPER_PWG_NAMES.get(media_name)
             if pwg_name:
                 return pwg_name
-            # 没有预定义的 PWG 名 → 用 custom
-            return f"custom_{media_name.lower()}_{w_mm}x{h_mm}mm"
+            # 没有官方 PWG 名 (如 8K) → 用 CUPS 通用 Custom 格式
+            # 注意: PWG 风格的 "custom_xxx_WxHmm" 是 IPP 自定义命名空间,
+            # 多数打印机不识别。Custom.WxHmm 是 CUPS 通用兜底, 各驱动都认。
+            return f"Custom.{w_mm}x{h_mm}mm"
 
         if style == "short":
             # 老 PPD 驱动直接用 A3 / A4 简称即可
@@ -463,14 +472,44 @@ class PrinterService:
         # 都不行 → CUPS 通用 Custom.WxHmm 格式
         return f"Custom.{w_mm}x{h_mm}mm"
 
+    def _resolve_page_size_value(self, media_name: str, w_mm: int, h_mm: int) -> str:
+        """
+        返回 PPD 驱动需要的 PageSize 选项值
+
+        PPD 驱动 (绝大多数办公打印机如富士施乐 SC2020) 只看 PageSize,
+        完全忽略 media 字段。这是过去 A3/8K 下发被识别成 A4 的根因 —
+        我们只设了 media, PPD 看不到, 就回退到默认 A4。
+
+        优先级:
+          1. PPD 自带的简称: A3 / A4 / 8K / Letter — 直接传, PPD 完全识别
+          2. CUPS 通用 Custom.WxHmm — 任何 PPD 都接受, 自定义尺寸回退
+
+        说明: 为什么不用 PWG 名?
+          PageSize 是 PPD 风格选项, PWG 名 (iso_a3_297x420mm) 不是
+          PPD PageSize 的合法值, 反而会触发 "未知 PageSize" 错误回退到默认。
+        """
+        # PPD 驱动认简称, 直接传 (即使 PPD 文件没列出该尺寸,
+        # CUPS 也会用 Custom 兜底, 不会无端回退到 A4)
+        if media_name in PAPER_DIMENSIONS_MM:
+            # 优先: PPD 标准简称 (A3/A4/B4/Letter 等)
+            # 8K 也用简称, 富士施乐等中国市场 PPD 通常预定义了 8K
+            return media_name
+
+        # 极端兜底: 自定义尺寸
+        return f"Custom.{w_mm}x{h_mm}mm"
+
     def _detect_media_style(self) -> str:
         """
         探测打印机支持的 media 命名风格
 
         Returns:
-            "pwg"   — 支持 PWG 标准名 (iso_a3_297x420mm)
-            "short" — 支持简称 (A3)
+            "pwg"   — 仅支持 PWG 标准名 (iso_a3_297x420mm)
+            "short" — 支持简称 (A3 / A4 等), 包括同时支持 PWG 与简称的现代驱动
             "custom" — 都不支持, 用 Custom.WxHmm 回退
+
+        策略说明: 如果同时支持 PWG 和简称, 返回 "short"。
+        因为简称 (A3) 对 PWG/IPP/PPD 三种驱动都识别, 而 PWG 名只有
+        IPP-everywhere 识别, PPD 驱动会忽略并回退到默认。
         """
         if self.conn is None:
             return "custom"
@@ -490,15 +529,21 @@ class PrinterService:
 
         supported_lower = {str(s).lower() for s in supported}
 
-        # 有任何 iso_*/na_* 形式 → PWG 风格
-        if any(s.startswith(("iso_", "na_", "om_", "asme_", "roc_")) for s in supported_lower):
-            logger.info(f"打印机支持 PWG 命名 (共 {len(supported)} 种纸张)")
-            return "pwg"
+        has_short = any(s in supported_lower for s in ("a3", "a4", "letter", "legal"))
+        has_pwg = any(
+            s.startswith(("iso_", "na_", "om_", "asme_", "roc_"))
+            for s in supported_lower
+        )
 
-        # 有 A3/A4/Letter 简称 → short 风格
-        if any(s in supported_lower for s in ("a3", "a4", "letter", "legal")):
-            logger.info(f"打印机支持简称命名")
+        # 简称优先 — 兼容性最好 (PPD/IPP 都认)
+        if has_short:
+            logger.info(f"打印机支持简称命名 (共 {len(supported)} 种纸张)")
             return "short"
+
+        # 仅支持 PWG → 现代 IPP-everywhere 驱动
+        if has_pwg:
+            logger.info(f"打印机仅支持 PWG 命名 (共 {len(supported)} 种纸张)")
+            return "pwg"
 
         logger.warning(
             f"打印机未暴露纸张列表, 使用 Custom 自定义尺寸 (supported={list(supported)[:5]})"
