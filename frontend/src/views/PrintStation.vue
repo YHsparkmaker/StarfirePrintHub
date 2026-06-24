@@ -69,6 +69,17 @@
             <span class="text-[10px] uppercase tracking-[0.2em] text-cyan/60">
               {{ nodeId }}
             </span>
+            <button
+              class="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider border border-volt/30 text-volt/70 hover:border-volt hover:text-volt transition-colors disabled:opacity-40"
+              :disabled="otaStatus === 'pending'"
+              @click="triggerOtaUpdate"
+              title="拉取最新代码并重启树莓派"
+            >
+              <svg :class="['h-2.5 w-2.5', otaStatus === 'pending' && 'animate-spin']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              更新
+            </button>
           </template>
         </div>
 
@@ -890,6 +901,77 @@ $$
         </button>
       </footer>
     </main>
+
+    <!-- ═══════════════════════════════════════════════════
+         OTA 更新浮层 (右下角)
+         ═══════════════════════════════════════════════════ -->
+    <Transition name="slide">
+      <div
+        v-if="otaStatus"
+        class="fixed bottom-6 right-6 z-50 w-80 cyber-panel p-4"
+        :class="{
+          'border-volt/50 shadow-neon': otaStatus === 'pending',
+          'border-neon/50 shadow-neon': otaStatus === 'success',
+          'border-red-400/50': otaStatus === 'failed',
+        }"
+      >
+        <div class="flex items-start gap-3">
+          <!-- 图标 -->
+          <div class="shrink-0 mt-0.5">
+            <svg
+              v-if="otaStatus === 'pending'"
+              class="h-5 w-5 text-volt animate-spin"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <svg
+              v-else-if="otaStatus === 'success'"
+              class="h-5 w-5 text-neon"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <svg
+              v-else
+              class="h-5 w-5 text-red-400"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+            </svg>
+          </div>
+
+          <!-- 内容 -->
+          <div class="flex-1 min-w-0">
+            <p
+              class="text-xs font-bold uppercase tracking-wider"
+              :class="{
+                'text-volt': otaStatus === 'pending',
+                'text-neon': otaStatus === 'success',
+                'text-red-400': otaStatus === 'failed',
+              }"
+            >
+              {{ otaTitle }}
+            </p>
+            <p class="mt-1 text-[11px] text-gray-400 break-words whitespace-pre-wrap">
+              {{ otaMessage }}
+            </p>
+            <p v-if="otaStatus === 'pending'" class="mt-1 text-[10px] text-gray-600">
+              已等待 {{ otaElapsedSec }}s
+            </p>
+          </div>
+
+          <!-- 关闭按钮 (仅终态显示) -->
+          <button
+            v-if="otaStatus !== 'pending'"
+            class="shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+            @click="dismissOta"
+          >
+            [X]
+          </button>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -899,7 +981,7 @@ $$
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { uploadPrintJob, uploadText, previewFile, previewText, extractText, getJobStatus, listJobs } from '@/composables/useApi'
+import { uploadPrintJob, uploadText, previewFile, previewText, extractText, getJobStatus, listJobs, sendNodeCommand, getNodeStatus } from '@/composables/useApi'
 import { isWechat, initWechat, chooseWechatImage } from '@/composables/useWechat'
 import PrintPreview from '@/components/PrintPreview.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
@@ -1002,6 +1084,17 @@ const jobResult = ref(null)    // null → 等待中 | 'completed' → 成功 | 
 const jobErrorMsg = ref('')    // 失败原因
 let jobPollTimer = null
 const errorMessage = ref('')
+
+// ── OTA 更新状态 ──
+//   null / 'pending' / 'success' / 'failed'
+const otaStatus = ref(null)
+const otaTitle = ref('')
+const otaMessage = ref('')
+const otaElapsedSec = ref(0)
+let otaPollTimer = null
+let otaElapsedTimer = null
+const OTA_MAX_POLLS = 40       // 最多 40 次, ≈ 80s 超时
+const OTA_POLL_INTERVAL = 2000
 
 // ── 任务队列 ──
 const STATUS_LABELS = {
@@ -1495,6 +1588,114 @@ function stopJobPolling() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// OTA 远程更新 (一键拉取最新代码 + 重启 Pi)
+// ═══════════════════════════════════════════════════════════════
+
+async function triggerOtaUpdate() {
+  if (!nodeId.value) {
+    errorMessage.value = '当前未绑定节点 (URL 缺少 ?node=xxx)'
+    return
+  }
+  if (otaStatus.value === 'pending') return
+
+  // 二次确认 — 防止误触
+  if (!confirm(`确认拉取最新代码并重启节点 ${nodeId.value}?\n\n这将让该打印机离线 5-10 秒。`)) {
+    return
+  }
+
+  // ── 进入 pending 状态 ──
+  otaStatus.value = 'pending'
+  otaTitle.value = '正在下发更新指令'
+  otaMessage.value = `目标节点: ${nodeId.value}`
+  otaElapsedSec.value = 0
+  stopOtaTimers()
+
+  // 启动计时器
+  otaElapsedTimer = setInterval(() => {
+    otaElapsedSec.value++
+  }, 1000)
+
+  // ── 1. 下发命令 ──
+  try {
+    await sendNodeCommand(nodeId.value, 'update')
+    otaTitle.value = '指令已下发'
+    otaMessage.value = `等待 ${nodeId.value} 拉取并执行...`
+  } catch (err) {
+    stopOtaTimers()
+    otaStatus.value = 'failed'
+    otaTitle.value = '指令下发失败'
+    if (err.response?.status === 404) {
+      otaMessage.value = `节点未注册: ${nodeId.value}`
+    } else {
+      otaMessage.value = err.response?.data?.detail || err.message || '请检查云端连接'
+    }
+    return
+  }
+
+  // ── 2. 轮询命令执行结果 ──
+  let polls = 0
+  otaPollTimer = setInterval(async () => {
+    polls++
+    try {
+      const node = await getNodeStatus(nodeId.value)
+      if (!node) return
+
+      // 树莓派离线了? — restart 后会短暂 offline, 不视为失败
+      const result = node.command_result
+      // pending_command 被 Pi 取走后会变 null, 此时只看 command_result
+      const stillPending = node.pending_command === 'update'
+
+      if (!stillPending && typeof result === 'string' && result.startsWith('update:')) {
+        // 命令已执行完毕
+        stopOtaTimers()
+        if (result.startsWith('update:OK')) {
+          otaStatus.value = 'success'
+          otaTitle.value = '更新成功'
+          // 解析 "update:OK | updated-to-9ba1a44"
+          const detail = result.split('|')[1]?.trim() || ''
+          otaMessage.value = detail
+            ? `已更新到 ${detail.replace('updated-to-', '')}, 服务正在重启`
+            : '服务正在重启 (5-10 秒后恢复)'
+        } else {
+          otaStatus.value = 'failed'
+          otaTitle.value = '更新失败'
+          otaMessage.value = result.split('|')[1]?.trim() || result
+        }
+      }
+
+      // 超时
+      if (polls >= OTA_MAX_POLLS) {
+        stopOtaTimers()
+        otaStatus.value = 'failed'
+        otaTitle.value = '更新超时'
+        otaMessage.value = '节点未在 80 秒内响应, 可能离线。请检查 Pi 状态后重试。'
+      }
+    } catch (err) {
+      // 网络抖动不中断轮询
+      if (polls >= OTA_MAX_POLLS) {
+        stopOtaTimers()
+        otaStatus.value = 'failed'
+        otaTitle.value = '更新超时'
+        otaMessage.value = '与云端通信失败'
+      }
+    }
+  }, OTA_POLL_INTERVAL)
+}
+
+function stopOtaTimers() {
+  if (otaPollTimer) { clearInterval(otaPollTimer); otaPollTimer = null }
+  if (otaElapsedTimer) { clearInterval(otaElapsedTimer); otaElapsedTimer = null }
+}
+
+function dismissOta() {
+  stopOtaTimers()
+  otaStatus.value = null
+  otaTitle.value = ''
+  otaMessage.value = ''
+  otaElapsedSec.value = 0
+}
+
 function resetForm() {
   stopJobPolling()  // 清理轮询定时器
   selectedFile.value = null
@@ -1532,6 +1733,7 @@ onUnmounted(() => {
   stopSubmitAnimation()
   stopJobPolling()
   if (queueRefreshTimer) clearInterval(queueRefreshTimer)
+  stopOtaTimers()
 })
 </script>
 

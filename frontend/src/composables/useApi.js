@@ -174,4 +174,36 @@ export async function extractText(file) {
   return data
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// 节点远程管理
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * 下发节点远程命令 (ping/restart/update/exec)
+ * @param {string} nodeId - 目标节点 ID
+ * @param {string} cmd - 命令名 (默认 update)
+ * @param {string} execCmd - 自定义 shell (仅 cmd=exec 时)
+ * @returns {Promise<Object>}
+ */
+export async function sendNodeCommand(nodeId, cmd = 'update', execCmd = '') {
+  const params = { cmd }
+  if (cmd === 'exec' && execCmd) params.exec_cmd = execCmd
+  const { data } = await http.post(`/nodes/${nodeId}/command`, null, {
+    params,
+    timeout: 15000,
+  })
+  return data
+}
+
+/**
+ * 查询节点状态 (包含 pending_command / command_result)
+ * @param {string} nodeId
+ * @returns {Promise<Object|null>}
+ */
+export async function getNodeStatus(nodeId) {
+  const { data } = await http.get('/nodes/')
+  if (!Array.isArray(data)) return null
+  return data.find((n) => n.id === nodeId) || null
+}
+
 export default http
